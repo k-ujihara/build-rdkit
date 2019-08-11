@@ -7,10 +7,8 @@
 
 # Build directory
 
-build32/
-build64/
-buildx86/
-buildx64/
+buildx86*/
+buildx64*/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
