@@ -39,3 +39,13 @@ This is to build RDKit for Windows with Visual Studio 2017. This is tested using
 - C&#35; project file is created in '(RDKit-directory)/Code/JavaWrappers/csharp\_wrapper/RDKit2DotNet.csproj'.
 - Set environmental variable 'RDBASE' proper value.
 - Add Boost DLLs directory to 'Path', or copy all Boost DLLs into the same directory of RDKFuncs.dll.
+
+### Build NuGet package for C&#35;
+
+- After building for C&#35;,
+- Open 'Developer Command Prompt for VS 2017'.
+- Execute 'set-envs.bat'.
+- Execute 'python build-rdkit-csharp.py'.
+- Execute 'make-nuget-csharp.py'.
+- NuGet package is created as '(RDKit-directory)/Code/JavaWrappers/csharp\_wrapper/RDKit.DotNetWrap.#.#.#.nupkg'.
+- Example using this NuGet package is in 'RDKit2DotNet.Example' directory.

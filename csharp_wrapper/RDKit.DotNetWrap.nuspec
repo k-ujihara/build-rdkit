@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>RDKit.DotNetWrap</id>
+    <version>0.2019033.1</version>
+    <title>RDKit C# Binding</title>
+    <authors>Kazuya Ujihara</authors>
+    <owners>kazuya</owners>
+	<licenseUrl>https://github.com/rdkit/rdkit/blob/master/license.txt</licenseUrl>
+    <projectUrl>https://github.com/kazuyaujihara/build-rdkit</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>.NET binding of RDKit-Release_2019_03_3. Supports AnyCPU, x86 and x64.</description>
+    <releaseNotes>This release is based on RDKit Release_2019_03_3, Boost 1.70.0, zlib 1.2.11 and Eigen 3.3.7.</releaseNotes>
+    <copyright>Copyright © 2019 Kazuya Ujihara</copyright>
+    <tags>rdkit</tags>
+  </metadata>
+  <files>
+    <file src="RDKit.DotNetWrap.targets" target="build/" />
+    <file src="bin/Release/RDKit2DotNet.dll" target="lib/net40" />
+	<nativefiles />
+  </files>
+</package>

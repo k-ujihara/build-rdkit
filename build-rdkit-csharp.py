@@ -65,7 +65,7 @@ replace_file_string(os.path.join(rdkit_swig_csharp_dir, 'RDKFuncsPINVOKE.cs'), [
 shutil.copy2(os.path.join(os.environ['THISDIR'], 'csharp_wrapper/RDKFuncsPINVOKE_Loader.cs'), rdkit_swig_csharp_dir)
 replace_file_string(os.path.join(rdkit_csharp_wrapper_dir, 'RDKit2DotNet.csproj'), \
         [('\\<Content Include\\=\\"RDKFuncs\\.dll\\"\\>.*?\\<\\/Content\\>', 
-          '<Content Include="x64\RDKFuncs.dll"><CopyToOutputDirectory>Always</CopyToOutputDirectory></Content>' \
+          '<Content Include="x64\RDKFuncs.dll"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>' \
           '<Content Include="x86\RDKFuncs.dll"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>')])
 shutil.copy2(os.path.join(os.environ['THISDIR'], 'csharp_wrapper/RDKitCSharpTest.csproj'), os.path.join(rdkit_csharp_wrapper_dir, 'RDKitCSharpTest'))
 shutil.copy2(os.path.join(os.environ['THISDIR'], 'csharp_wrapper/RDKit2DotNet.sln'), rdkit_csharp_wrapper_dir)
