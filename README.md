@@ -1,13 +1,18 @@
 # Build RDKit using Visual Studio 2017
 
 This is to build RDKit for Windows with Visual Studio 2017. This is tested using the following versions.
-- rdkit-Release_2019_03_3
+
+- rdkit-Release\_2019\_03\_3
 - Boost 1.70.0
 - Eigen 3.3.7
 - zlib 1.2.11
 - Python 3.6.8
 - SWIG 4.0.0
 - CMAKE 3.15.1
+
+## NuGet package
+
+NuGet package is available at [https://www.nuget.org/packages/RDKit.DotNetWrap/](https://www.nuget.org/packages/RDKit.DotNetWrap/).
 
 ## How to Build
 
