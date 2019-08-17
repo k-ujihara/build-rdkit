@@ -16,11 +16,14 @@ Compiled NuGet package is available at [https://www.nuget.org/packages/RDKit.Dot
 
 ## How to Build
 
-### Build for Python
+### Requirements
 
 - Install Visual Studio 2017 and CMAKE.
 - Install Python using installer enabling pip.
 - Download and extract source codes of RDKit, Boost, zlib and Eigen3 to this directory.
+
+### Build for Python
+
 - Customize 'custom-dir.bat' file.
 - Open 'Developer Command Prompt for VS 2017'.
 - Execute 'build-python.bat'.
@@ -28,12 +31,20 @@ Compiled NuGet package is available at [https://www.nuget.org/packages/RDKit.Dot
 
 ### Build for C&#35;
 
-- Install Visual Studio 2017, CMAKE, Python and SWIG.
-- Download and extract source codes of RDKit, Boost, zlib and Eigen3 to this directory.
-- Customize 'set-envs.bat' file.
+- Customize 'custom-dir.bat' file.
+- Open 'Developer Command Prompt for VS 2017'.
+- Execute 'build-csharp-all.bat'.
+- If error happened, see below.
+
+#### Step by Step
+
+#### Build Assembly
+
 - Open 'Developer Command Prompt for VS 2017'.
 - Execute 'SET BUILDPLATFORM=x64' or 'SET BUILDPLATFORM=x86'.
 - Execute 'set-envs.bat'.
+- Execute 'make-zlib.bat'.
+- Execute 'make-boost.bat'.
 - Execute 'python build-rdkit-csharp.py'.
 - Close 'Developer Command Prompt for VS 2017'.
 - C&#35; project file is created in '(RDKit-directory)/Code/JavaWrappers/csharp\_wrapper/RDKit2DotNet.csproj'.
@@ -42,7 +53,7 @@ Compiled NuGet package is available at [https://www.nuget.org/packages/RDKit.Dot
   - Set environmental variable 'RDBASE' proper value.
   - Add Boost DLLs directory to 'Path', or copy all Boost DLLs into the same directory of RDKFuncs.dll.
 
-### Build NuGet package for C&#35;
+#### Build NuGet package for C&#35;
 
 - Build both x64 and x86 version according to above procedure.
 - Open 'Developer Command Prompt for VS 2017'.
@@ -50,6 +61,3 @@ Compiled NuGet package is available at [https://www.nuget.org/packages/RDKit.Dot
 - Execute 'build-nuget-csharp.py'.
 - NuGet package is created as '(RDKit-directory)/Code/JavaWrappers/csharp\_wrapper/RDKit.DotNetWrap.#.#.#.nupkg'.
 - Example using this NuGet package is in 'RDKit2DotNet.Example' directory.
-
-- 'build-csharp-all.bat' do all above.
-

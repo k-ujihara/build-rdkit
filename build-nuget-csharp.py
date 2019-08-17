@@ -46,7 +46,7 @@ for cpu_model in cpu_models:
 
 # Prepare RDKit2DotNet.nuspec
 
-nuspec_file = shutil.copy2(os.path.join(this_dir, 'csharp_wrapper/' + project_name + '.nuspec'), rdkit_csharp_wrapper_dir)
+nuspec_file = shutil.copy(os.path.join(this_dir, 'csharp_wrapper/' + project_name + '.nuspec'), rdkit_csharp_wrapper_dir)
 nuspec_dlls_spec = []
 for cpu_model in cpu_models:
     for dllname in dllfiles_dic[cpu_model]:
@@ -54,7 +54,7 @@ for cpu_model in cpu_models:
 
 replace_file_string(nuspec_file, [('\\<nativefiles\\s*\\/\\>', ''.join(nuspec_dlls_spec))])
 
-targets_file = shutil.copy2(os.path.join(this_dir, 'csharp_wrapper/' + project_name + '.targets'), rdkit_csharp_wrapper_dir)
+targets_file = shutil.copy(os.path.join(this_dir, 'csharp_wrapper/' + project_name + '.targets'), rdkit_csharp_wrapper_dir)
 targets_dlls_spec = []
 for cpu_model in cpu_models:
     targets_dlls_spec.append('<ItemGroup Condition=" \'$(Platform)\' == \'' + cpu_model +'\' ">\\n')

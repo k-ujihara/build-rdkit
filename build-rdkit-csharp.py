@@ -33,20 +33,27 @@ rdkit_csharp_wrapper_dir = os.path.join(rdkit_dir, 'Code/JavaWrappers/csharp_wra
 rdkit_swig_csharp_dir = os.path.join(rdkit_csharp_wrapper_dir, 'swig_csharp')
 
 curr_dir = os.getcwd()
-os.chdir(rdkit_csharp_build_dir)
 os.makedirs(rdkit_csharp_build_dir, exist_ok = True)
+os.chdir(rdkit_csharp_build_dir)
 
 replace_file_string(os.path.join(rdkit_dir, 'Code/JavaWrappers/csharp_wrapper/GraphMolCSharp.i'), \
-        [ ('boost::int32_t', 'int32_t'), \
-          ('boost::uint32_t', 'uint32_t')])
+    [ ('boost::int32_t', 'int32_t'), \
+      ('boost::uint32_t', 'uint32_t')])
 
 cmd = 'cmake ' \
-    '-DRDK_BUILD_SWIG_WRAPPERS=ON -DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON -DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF -DRDK_BUILD_PYTHON_WRAPPERS=OFF ' + \
+    '-DRDK_BUILD_SWIG_WRAPPERS=ON ' + \
+    '-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON ' + \
+    '-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF ' + \
+    '-DRDK_BUILD_PYTHON_WRAPPERS=OFF ' + \
     '-DBOOST_ROOT="' + boost_bin_dir + '" ' + \
     '-DZLIB_LIBRARY="' + zlib_lib + '" ' + \
     '-DZLIB_INCLUDE_DIR="' + zlib_dir + '" ' + \
     '-DEIGEN3_INCLUDE_DIR="' + eigen_dir + '" ' + \
-    '-DRDK_INSTALL_INTREE=OFF -DCPACK_INSTALL_PREFIX=rdkit -DRDK_BUILD_THREADSAFE_SSS=ON -DRDK_BUILD_INCHI_SUPPORT=ON -DRDK_BUILD_AVALON_SUPPORT=ON ' + \
+    '-DRDK_INSTALL_INTREE=OFF ' + \
+    '-DRDK_BUILD_CPP_TESTS=OFF ' + \
+    '-DRDK_BUILD_THREADSAFE_SSS=ON ' + \
+    '-DRDK_BUILD_INCHI_SUPPORT=ON ' + \
+    '-DRDK_BUILD_AVALON_SUPPORT=ON ' + \
     '-G"' + g_option_of_cmake + '" ' + \
     '..'
 cmd = cmd.replace('\\', '/')
@@ -67,9 +74,9 @@ replace_file_string(os.path.join(rdkit_swig_csharp_dir, 'RDKFuncsPINVOKE.cs'), [
 replace_file_string(os.path.join(rdkit_swig_csharp_dir, 'RDKFuncsPINVOKE.cs'), [('static SWIGExceptionHelper\\(\\)\\s*\\{', 'static SWIGExceptionHelper() { RDKFuncsPINVOKE.LoadDll();')])
 shutil.copy2(os.path.join(this_dir, 'csharp_wrapper/RDKFuncsPINVOKE_Loader.cs'), rdkit_swig_csharp_dir)
 replace_file_string(os.path.join(rdkit_csharp_wrapper_dir, 'RDKit2DotNet.csproj'), \
-        [('\\<Content Include\\=\\"RDKFuncs\\.dll\\"\\>.*?\\<\\/Content\\>', 
-          '<Content Include="x64\RDKFuncs.dll"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>' \
-          '<Content Include="x86\RDKFuncs.dll"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>')])
+    [('\\<Content Include\\=\\"RDKFuncs\\.dll\\"\\>.*?\\<\\/Content\\>', 
+        '<Content Include="x64\RDKFuncs.dll"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>' \
+        '<Content Include="x86\RDKFuncs.dll"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>')])
 shutil.copy2(os.path.join(this_dir, 'csharp_wrapper/RDKitCSharpTest.csproj'), os.path.join(rdkit_csharp_wrapper_dir, 'RDKitCSharpTest'))
 shutil.copy2(os.path.join(this_dir, 'csharp_wrapper/RDKit2DotNet.sln'), rdkit_csharp_wrapper_dir)
 
