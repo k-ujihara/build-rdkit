@@ -1,25 +1,19 @@
+REM Customize 'custom-dir.bat'.
+REM Before calling this batch,
+REM 'SET BUILDPLATFORM=x86' when you build 32-bit platform,
+REM 'SET BUILDPLATFORM=x64' when you build 32-bit platform.
+REM If it is not specified, BUILDPLATFORM is set accrding to PROCESSOR_ARCHITECTURE value.
+
 SET THISDIR=%~dp0
-
-REM 
-REM Customize the follwing lines.
-REM When you build 32-bit platform, 'SET BUILDPLATFORM=x86' before call this batch file.
-
+SET FORMER_BUILDPLATFORM=%BUILDPLATFORM%
 IF "%BUILDPLATFORM%" == "" (
 	IF "%PROCESSOR_ARCHITECTURE%" EQU "AMD64" SET BUILDPLATFORM=x64
 	IF "%PROCESSOR_ARCHITECTURE%" EQU "x86"   SET BUILDPLATFORM=x86
 )
-SET RDKITDIR=%THISDIR%rdkit-Release_2019_03_3
-SET BOOSTDIR=%THISDIR%boost_1_70_0
-SET EIGENDIR=%THISDIR%eigen-eigen-323c052e1731
-SET ZLIBDIR=%THISDIR%zlib-1.2.11
-IF "%PYTHONDIR%" == "" (
-	IF "%BUILDPLATFORM%" EQU "x64" SET PYTHONDIR=%LOCALAPPDATA%\Programs\Python\Python36
-	IF "%BUILDPLATFORM%" EQU "x86" SET PYTHONDIR=%LOCALAPPDATA%\Programs\Python\Python36-32
-)	
+SET BUILDPLATFORM_CHANGED=
+IF "%FORCEADDPYTHONPATH%" NEQ "%BUILDPLATFORM%" SET BUILDPLATFORM_CHANGED=TRUE 
 
-REM 
-REM Customize the above lines.
-REM 
+CALL "%THISDIR%custom-dir.bat"
 
 IF "%BUILDPLATFORM%" == "x64" (
 	SET CMAKEG=Visual Studio 15 2017 Win64
@@ -42,9 +36,8 @@ IF "%PYTHONDIR%" EQU "" (
 	EXIT
 ) 
 
-IF "%__PythonPathAdded%" NEQ "" GOTO :L__PythonPathAdded
+IF "%BUILDPLATFORM_CHANGED%" EQU "" GOTO L__ForceAddPythonPath
 	PATH %PYTHONDIR%;%Path%
-	SET __PythonPathAdded=1
 :L__PythonPathAdded
 
 PUSHD %PYTHONDIR%

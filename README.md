@@ -12,7 +12,7 @@ This is to build RDKit for Windows with Visual Studio 2017. This is tested using
 
 ## NuGet package
 
-NuGet package is available at [https://www.nuget.org/packages/RDKit.DotNetWrap/](https://www.nuget.org/packages/RDKit.DotNetWrap/).
+Compiled NuGet package is available at [https://www.nuget.org/packages/RDKit.DotNetWrap/](https://www.nuget.org/packages/RDKit.DotNetWrap/).
 
 ## How to Build
 
@@ -21,10 +21,10 @@ NuGet package is available at [https://www.nuget.org/packages/RDKit.DotNetWrap/]
 - Install Visual Studio 2017 and CMAKE.
 - Install Python using installer enabling pip.
 - Download and extract source codes of RDKit, Boost, zlib and Eigen3 to this directory.
-- Customize 'set-envs.bat' file.
+- Customize 'custom-dir.bat' file.
 - Open 'Developer Command Prompt for VS 2017'.
-- Execute 'build-all.bat'.
-- 'SET BUILDPLATFORM=x86' to build for 32-bit. (Some tests are failed.)
+- Execute 'build-python.bat'.
+- 'SET BUILDPLATFORM=x86' before execution above if you build for 32-bit. (Some tests are failed.)
 
 ### Build for C&#35;
 
@@ -32,25 +32,24 @@ NuGet package is available at [https://www.nuget.org/packages/RDKit.DotNetWrap/]
 - Download and extract source codes of RDKit, Boost, zlib and Eigen3 to this directory.
 - Customize 'set-envs.bat' file.
 - Open 'Developer Command Prompt for VS 2017'.
-- Execute 'SET BUILDPLATFORM=x64'.
-- Execute 'set-envs.bat'.
-- Execute 'python build-rdkit-csharp.py'.
-- Close 'Developer Command Prompt for VS 2017'.
-- Open 'Developer Command Prompt for VS 2017'.
-- Execute 'SET BUILDPLATFORM=x86'.
+- Execute 'SET BUILDPLATFORM=x64' or 'SET BUILDPLATFORM=x86'.
 - Execute 'set-envs.bat'.
 - Execute 'python build-rdkit-csharp.py'.
 - Close 'Developer Command Prompt for VS 2017'.
 - C&#35; project file is created in '(RDKit-directory)/Code/JavaWrappers/csharp\_wrapper/RDKit2DotNet.csproj'.
-- Set environmental variable 'RDBASE' proper value.
-- Add Boost DLLs directory to 'Path', or copy all Boost DLLs into the same directory of RDKFuncs.dll.
+- Modify the project's codes or customize 'build-rdkit-csharp.py' if required.
+- To execute RDKit2DotNet.dll, do the followings.
+  - Set environmental variable 'RDBASE' proper value.
+  - Add Boost DLLs directory to 'Path', or copy all Boost DLLs into the same directory of RDKFuncs.dll.
 
 ### Build NuGet package for C&#35;
 
-- After building for C&#35;,
+- Build both x64 and x86 version according to above procedure.
 - Open 'Developer Command Prompt for VS 2017'.
 - Execute 'set-envs.bat'.
-- Execute 'python build-rdkit-csharp.py'.
-- Execute 'make-nuget-csharp.py'.
+- Execute 'build-nuget-csharp.py'.
 - NuGet package is created as '(RDKit-directory)/Code/JavaWrappers/csharp\_wrapper/RDKit.DotNetWrap.#.#.#.nupkg'.
 - Example using this NuGet package is in 'RDKit2DotNet.Example' directory.
+
+- 'build-csharp-all.bat' do all above.
+

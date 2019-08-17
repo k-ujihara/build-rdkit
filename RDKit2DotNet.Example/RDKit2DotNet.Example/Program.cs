@@ -9,8 +9,14 @@ namespace RDKit2DotNet.Example
     {
         static void Main(string[] args)
         {
-            Test();
+            ErrorHandle();
             Demo();
+            Test();
+        }
+
+        static void ErrorHandle()
+        {
+            var invalid = RWMol.MolFromSmiles("dfep3js2g");
         }
 
         static void Demo()
