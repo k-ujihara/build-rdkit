@@ -1,4 +1,6 @@
-# It is for rdkit-Release_2019_03_3
+# It is for rdkit-Release_2019.09.1
+
+swig_patch_enabled: bool = True
 
 import os
 import subprocess
@@ -27,7 +29,7 @@ build_platform = os.environ['BUILDPLATFORM']
 g_option_of_cmake = cmake_g = os.environ['CMAKEG']
 ms_build_platform = os.environ['MSBUILDPLATFORM']
 number_of_processors = os.environ['NUMBER_OF_PROCESSORS']
-boost_bin_dir = os.path.join(os.path.join(boost_dir, 'stage'), build_platform)
+boost_bin_dir = os.path.join(os.path.join(os.path.join(boost_dir, 'stage'), build_platform), 'lib')
 zlib_lib = os.path.join(os.path.join(zlib_dir, build_dir), 'Release/zlib.lib')
 rdkit_csharp_wrapper_dir = os.path.join(rdkit_dir, 'Code/JavaWrappers/csharp_wrapper')
 rdkit_swig_csharp_dir = os.path.join(rdkit_csharp_wrapper_dir, 'swig_csharp')
@@ -36,16 +38,19 @@ curr_dir = os.getcwd()
 os.makedirs(rdkit_csharp_build_dir, exist_ok = True)
 os.chdir(rdkit_csharp_build_dir)
 
-replace_file_string(os.path.join(rdkit_dir, 'Code/JavaWrappers/csharp_wrapper/GraphMolCSharp.i'), \
-    [ ('boost::int32_t', 'int32_t'), \
-      ('boost::uint32_t', 'uint32_t')])
+if swig_patch_enabled:
+    replace_file_string(os.path.join(rdkit_dir, 'Code/JavaWrappers/csharp_wrapper/GraphMolCSharp.i'), \
+        [ ('boost::int32_t', 'int32_t'), \
+        ('boost::uint32_t', 'uint32_t')])
 
 cmd = 'cmake ' \
     '-DRDK_BUILD_SWIG_WRAPPERS=ON ' + \
     '-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON ' + \
     '-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF ' + \
     '-DRDK_BUILD_PYTHON_WRAPPERS=OFF ' + \
-    '-DBOOST_ROOT="' + boost_bin_dir + '" ' + \
+    '-DBOOST_ROOT="' + boost_dir + '" ' + \
+    '-DBOOST_INCLUDEDIR="' + boost_dir + '" ' + \
+    '-DBOOST_LIBRARYDIR="' + boost_bin_dir + '" ' + \
     '-DZLIB_LIBRARY="' + zlib_lib + '" ' + \
     '-DZLIB_INCLUDE_DIR="' + zlib_dir + '" ' + \
     '-DEIGEN3_INCLUDE_DIR="' + eigen_dir + '" ' + \
@@ -57,9 +62,11 @@ cmd = 'cmake ' \
     '-G"' + g_option_of_cmake + '" ' + \
     '..'
 cmd = cmd.replace('\\', '/')
+print(cmd)
 subprocess.check_call(cmd)
 
-cmd = 'MSBuild RDKit.sln /p:Configuration=Release,Platform=' + ms_build_platform + ' -maxcpucount:' + number_of_processors
+cmd = 'MSBuild RDKit.sln /p:Configuration=Release,Platform=' + ms_build_platform + ' /maxcpucount'
+print(cmd)
 subprocess.check_call(cmd)
 
 dll_dest_dir = os.path.join(rdkit_csharp_wrapper_dir, build_platform)
@@ -68,8 +75,9 @@ shutil.copy2(os.path.join(rdkit_csharp_build_dir, 'Code/JavaWrappers/csharp_wrap
 
 # Customize the followings if required.
 
-replace_file_string(os.path.join(rdkit_swig_csharp_dir, 'PropertyPickleOptions.cs'), [('BOOST_BINARY\\(\\s*([01]+)\\s*\\)', '0b\\1')])
-replace_file_string(os.path.join(rdkit_swig_csharp_dir, 'RDKFuncs.cs'), [('public static double DiceSimilarity\\([^\\}]*\\.DiceSimilarity__SWIG_(12|13|14)\\([^\\}]*\\}', '')])
+if swig_patch_enabled:
+    replace_file_string(os.path.join(rdkit_swig_csharp_dir, 'PropertyPickleOptions.cs'), [('BOOST_BINARY\\(\\s*([01]+)\\s*\\)', '0b\\1')])
+    replace_file_string(os.path.join(rdkit_swig_csharp_dir, 'RDKFuncs.cs'), [('public static double DiceSimilarity\\([^\\}]*\\.DiceSimilarity__SWIG_(12|13|14)\\([^\\}]*\\}', '')])
 replace_file_string(os.path.join(rdkit_swig_csharp_dir, 'RDKFuncsPINVOKE.cs'), [('class RDKFuncsPINVOKE\\s*\\{', 'partial class RDKFuncsPINVOKE {')])
 replace_file_string(os.path.join(rdkit_swig_csharp_dir, 'RDKFuncsPINVOKE.cs'), [('static SWIGExceptionHelper\\(\\)\\s*\\{', 'static SWIGExceptionHelper() { RDKFuncsPINVOKE.LoadDll();')])
 shutil.copy2(os.path.join(this_dir, 'csharp_wrapper/RDKFuncsPINVOKE_Loader.cs'), rdkit_swig_csharp_dir)
@@ -80,10 +88,10 @@ replace_file_string(os.path.join(rdkit_csharp_wrapper_dir, 'RDKit2DotNet.csproj'
 shutil.copy2(os.path.join(this_dir, 'csharp_wrapper/RDKitCSharpTest.csproj'), os.path.join(rdkit_csharp_wrapper_dir, 'RDKitCSharpTest'))
 shutil.copy2(os.path.join(this_dir, 'csharp_wrapper/RDKit2DotNet.sln'), rdkit_csharp_wrapper_dir)
 
-print('Open "' + os.path.join(rdkit_csharp_wrapper_dir, 'RDKit2DotNet.sln') + '" solution and modify some issues including the followings manually if required.')
+print('Solution file "' + os.path.join(rdkit_csharp_wrapper_dir, 'RDKit2DotNet.sln') + '" is created. Modify issues like the followings if required.')
 print('- Remove duplicated methods.')
 print('- Rename miss named SWIGTYPE classes.')
 print('- Add version infomation.')
-print('- Signing if required.')
+print('- Signing if necessary.')
 
 os.chdir(curr_dir)

@@ -1,12 +1,12 @@
-REM Execute this file in 'Developer Command Prompt for VS 2017'.
+@rem Execute this file in 'Developer Command Prompt for VS 2017'.
 
-REM Customize set-envs.bat for your purpose.
-CALL set-envs.bat
+@rem Customize set-envs.bat for your purpose.
+@call set-envs.bat
 
-CALL make-zlib.bat
-CALL make-boost.bat
-CALL make-rdkit
+@call make-zlib.bat
+@call make-boost.bat
+@call make-rdkit
 
-ECHO RDKit is built in '%RDKITDIR%\rdkit'. 
+@echo RDKit is built in '%RDKITDIR%\rdkit'. 
 
-call test-rdkit.bat
+@call test-rdkit.bat

@@ -1,68 +1,110 @@
-REM Customize 'custom-dir.bat'.
-REM Before calling this batch,
-REM 'SET BUILDPLATFORM=x86' when you build 32-bit platform,
-REM 'SET BUILDPLATFORM=x64' when you build 32-bit platform.
-REM If it is not specified, BUILDPLATFORM is set accrding to PROCESSOR_ARCHITECTURE value.
+@rem Customize 'custom-dir.bat'.
+@rem Before calling this batch,
+@rem 'set BUILDPLATFORM=x86' when you build for 32-bit platform,
+@rem 'set BUILDPLATFORM=x64' when you build for 64-bit platform.
+@rem if not specified, BUILDPLATFORM is set accrding to PROCESSOR_ARCHITECTURE value.
 
-SET THISDIR=%~dp0
-SET FORMER_BUILDPLATFORM=%BUILDPLATFORM%
-IF "%BUILDPLATFORM%" == "" (
-	IF "%PROCESSOR_ARCHITECTURE%" EQU "AMD64" SET BUILDPLATFORM=x64
-	IF "%PROCESSOR_ARCHITECTURE%" EQU "x86"   SET BUILDPLATFORM=x86
+@set THISDIR=%~dp0
+
+@rem Datermine BUILDPLATFORM and set variables.
+@set FORMER_BUILDPLATFORM=%BUILDPLATFORM%
+@if "%BUILDPLATFORM%" == "" (
+	if "%PROCESSOR_ARCHITECTURE%" EQU "AMD64" set BUILDPLATFORM=x64
+	if "%PROCESSOR_ARCHITECTURE%" EQU "x86"   set BUILDPLATFORM=x86
 )
-SET BUILDPLATFORM_CHANGED=
-IF "%FORCEADDPYTHONPATH%" NEQ "%BUILDPLATFORM%" SET BUILDPLATFORM_CHANGED=TRUE 
-
-CALL "%THISDIR%custom-dir.bat"
-
-IF "%BUILDPLATFORM%" == "x64" (
-	SET CMAKEG=Visual Studio 15 2017 Win64
-	SET MSBUILDPLATFORM=x64
-	SET ADDRESSMODEL=64
-) ELSE IF "%BUILDPLATFORM%" == "x86" (
-	SET CMAKEG=Visual Studio 15 2017
-	SET MSBUILDPLATFORM=Win32
-	SET ADDRESSMODEL=32
-) ELSE (
-	ECHO Error: Unknown platform "%BUILDPLATFORM%".
-	EXIT
+@echo BUILDPLATFORM is "%BUILDPLATFORM%".
+@set BUILDPLATFORM_CHANGED=
+@if "%FORMER_BUILDPLATFORM%" NEQ "%BUILDPLATFORM%" set BUILDPLATFORM_CHANGED=TRUE 
+@if "%BUILDPLATFORM_CHANGED%" NEQ "" if "%FORMER_BUILDPLATFORM%" NEQ "" (
+	@echo Build plarform is changed from %FORMER_BUILDPLATFORM% to %BUILDPLATFORM%.
 )
+@if "%BUILDPLATFORM%" EQU "x64" (
+	set CMAKEG=Visual Studio 15 2017 Win64
+	set MSBUILDPLATFORM=x64
+	set ADDRESSMODEL=64
+) else if "%BUILDPLATFORM%" EQU "x86" (
+	set CMAKEG=Visual Studio 15 2017
+	set MSBUILDPLATFORM=Win32
+	set ADDRESSMODEL=32
+) else (
+	echo Error: Unknown platform "%BUILDPLATFORM%".
+	exit
+)
+@set BUILDDIR=build%BUILDPLATFORM%
+@set BUILDDIRCSHARP=%BUILDDIR%CSharp
+@echo CMAKEG=%CMAKEG%
+@echo MSBUILDPLATFORM=%MSBUILDPLATFORM%
+@echo ADDRESSMODEL=%ADDRESSMODEL%
+@echo BUILDDIR=%BUILDDIR%
+@echo BUILDDIRCSHARP=%BUILDDIRCSHARP%
 
-SET BUILDDIR=build%BUILDPLATFORM%
-SET BUILDDIRCSHARP=%BUILDDIR%CSharp
+@call "%THISDIR%custom-dir.bat"
 
-IF "%PYTHONDIR%" EQU "" (
-	ECHO Error: PYTHONDIR is not specified.
-	EXIT
-) 
+@rem Setup Python info
+@if "%PYTHONVERSION%" EQU "" (
+	call :SELECTPYTHONVERSION Python36
+	call :SELECTPYTHONVERSION Python37
+	call :SELECTPYTHONVERSION Python38
+)
+@if "%PYTHONVERSION%" EQU "" (
+	@echo Error: PYTHONVERSION could not be specified.
+	@exit
+)
+@echo PYTHONVERSION=%PYTHONVERSION%
+@if "%BUILDPLATFORM%" EQU "x64" if exist "%LOCALAPPDATA%\Programs\Python\%PYTHONVERSION%\"    set PYTHONDIR=%LOCALAPPDATA%\Programs\Python\%PYTHONVERSION%
+@if "%BUILDPLATFORM%" EQU "x86" if exist "%LOCALAPPDATA%\Programs\Python\%PYTHONVERSION%-32\" set PYTHONDIR=%LOCALAPPDATA%\Programs\Python\%PYTHONVERSION%-32
+@if "%PYTHONDIR%" EQU "" (
+	@echo Error: PYTHONDIR is not specified.
+	@exit
+)
+@goto :L__ENDSETUPPYTHONINFO
+:SELECTPYTHONVERSION
+@if "%BUILDPLATFORM%" EQU "x64" if exist "%LOCALAPPDATA%\Programs\Python\%~1\"    set PYTHONVERSION=%~1
+@if "%BUILDPLATFORM%" EQU "x86" if exist "%LOCALAPPDATA%\Programs\Python\%~1-32\" set PYTHONVERSION=%~1
+@exit /b
+:L__ENDSETUPPYTHONINFO
 
-IF "%BUILDPLATFORM_CHANGED%" EQU "" GOTO L__ForceAddPythonPath
-	PATH %PYTHONDIR%;%Path%
-:L__PythonPathAdded
+@if "%BUILDPLATFORM_CHANGED%" NEQ "" goto :L__AddPythonDirToPATH
+@echo "%Path%" | @find "%PYTHONDIR%">nul
+@if not ERRORLEVEL 1 goto :L__EndPYTHONDIR
+:L__AddPythonDirToPATH
+	@echo Add %PYTHONDIR% to PATH.
+	@PATH %PYTHONDIR%;%Path%
+:L__EndPYTHONDIR
 
-PUSHD %PYTHONDIR%
-.\Scripts\pip install numpy
+@pushd "%PYTHONDIR%"
+@echo Install numpy.
+@.\Scripts\pip install numpy
 
-REM The followings are required to run tests.
+@rem The followings are required to run tests.
 
-REM To Path variable add Boost directory.
-IF "%__BoostPathAdded%" NEQ "" GOTO L__BoostPathAdded
-	PATH %BOOSTDIR%\stage\%BUILDPLATFORM%\lib;%Path%
-	SET __BoostPathAdded=1
-:L__BoostPathAdded
+@rem To Path variable add Boost directory.
+@if "%BUILDPLATFORM_CHANGED%" EQU "" goto :L__EndAddedBOOSTDIRtoPATH
+	@echo Add %BOOSTDIR%\stage\%BUILDPLATFORM%\lib to PATH.
+	@PATH %BOOSTDIR%\stage\%BUILDPLATFORM%\lib;%Path%
+)
+:L__EndAddedBOOSTDIRtoPATH
 
-REM Envirnmental variable used by RDKit.
-SET RDBASE=%RDKITDIR%
+@rem Envirnmental variable used by RDKit.
+@set RDBASE=%RDKITDIR%
+@echo RDBASE=%RDBASE%
 
-REM Add RDKit directory to PYTHONPATH to run with Python.
-IF "%__RdkitDir_PythonPath_Added%" NEQ "" GOTO L__RdkitDir_PythonPath_Added
-	SET PYTHONPATH=%RDKITDIR%;%PYTHONPATH%
-	SET __RdkitDir_PythonPath_Added=1
+@rem Add RDKit directory to PYTHONPATH to run with Python.
+@if "%PYTHONPATH%" EQU "" goto :L__RdkitDir_SetPYTHONPATH
+@echo "%PYTHONPATH%" | find "%RDKITDIR%"
+@if not ERRORLEVEL 1 goto :L__RdkitDir_PythonPath_Added
+:L__RdkitDir_SetPYTHONPATH
+@echo Add %RDKITDIR% to PYTHONPATH.
+@set PYTHONPATH=%RDKITDIR%;%PYTHONPATH%
 :L__RdkitDir_PythonPath_Added
 
-REM Some tests requires pandas and pillow package.
-.\Scripts\pip install pandas
-.\Scripts\pip install pillow
-POPD
+@rem Some tests requires pandas and pillow package.
+@echo Install pandas.
+@.\Scripts\pip install pandas
+@echo Install pillow.
+@.\Scripts\pip install pillow
+@popd
+
+@goto :END
 
 :END

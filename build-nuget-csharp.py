@@ -17,9 +17,16 @@ def replace_file_string(filename, pattern_replace):
     with open(filename, 'w', encoding="utf-8") as file:
         file.write(filedata)
 
-this_dir = os.environ['THISDIR']
+this_dir: str = os.environ['THISDIR']
 boost_dir = os.environ['BOOSTDIR']
 rdkit_dir = os.environ['RDKITDIR']
+s = re.split('[\\\\\\/]rdkit\\-Release_(\\d\\d\\d\\d)_(\\d\\d)_(\\d)', rdkit_dir)
+if len(s) == 5 and (s[4] == '' or s[4] == '/' or s[4] == '\\'):
+    version_for_nuget = f"0.{s[1]}{s[2]}{s[3]}.1"
+    version_for_rdkit = f"{s[1]}.{s[2]}.{s[3]}"
+else:
+    version_for_nuget = ''
+    version_for_rdkit = ''
 rdkit_csharp_wrapper_dir = os.path.join(rdkit_dir, 'Code/JavaWrappers/csharp_wrapper')
 rdkit_csharp_release_dir = os.path.join(rdkit_csharp_wrapper_dir, 'bin/Release')
 
@@ -47,6 +54,11 @@ for cpu_model in cpu_models:
 # Prepare RDKit2DotNet.nuspec
 
 nuspec_file = shutil.copy(os.path.join(this_dir, 'csharp_wrapper/' + project_name + '.nuspec'), rdkit_csharp_wrapper_dir)
+
+if not version_for_nuget == '':
+    replace_file_string(nuspec_file, [('\\<version\\>[0-9\\.]*\\<\\/version\\>', '<version>' + version_for_nuget + '</version>')])
+    replace_file_string(nuspec_file, [('Release_\\d\\d\\d\\d\\.\\d\\d\\.\\d', 'Release_' + version_for_rdkit + '')])
+
 nuspec_dlls_spec = []
 for cpu_model in cpu_models:
     for dllname in dllfiles_dic[cpu_model]:

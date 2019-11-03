@@ -75,7 +75,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="RDKit2DotNet, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\RDKit.DotNetWrap.0.2019033.1\lib\net40\RDKit2DotNet.dll</HintPath>
+      <HintPath>..\packages\RDKit.DotNetWrap.0.2019091.1\lib\net40\RDKit2DotNet.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -113,11 +113,11 @@
     </Content>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <Import Project="..\packages\RDKit.DotNetWrap.0.2019033.1\build\RDKit.DotNetWrap.targets" Condition="Exists('..\packages\RDKit.DotNetWrap.0.2019033.1\build\RDKit.DotNetWrap.targets')" />
+  <Import Project="..\packages\RDKit.DotNetWrap.0.2019091.1\build\RDKit.DotNetWrap.targets" Condition="Exists('..\packages\RDKit.DotNetWrap.0.2019091.1\build\RDKit.DotNetWrap.targets')" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>このプロジェクトは、このコンピューター上にない NuGet パッケージを参照しています。それらのパッケージをダウンロードするには、[NuGet パッケージの復元] を使用します。詳細については、http://go.microsoft.com/fwlink/?LinkID=322105 を参照してください。見つからないファイルは {0} です。</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('..\packages\RDKit.DotNetWrap.0.2019033.1\build\RDKit.DotNetWrap.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\RDKit.DotNetWrap.0.2019033.1\build\RDKit.DotNetWrap.targets'))" />
+    <Error Condition="!Exists('..\packages\RDKit.DotNetWrap.0.2019091.1\build\RDKit.DotNetWrap.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\RDKit.DotNetWrap.0.2019091.1\build\RDKit.DotNetWrap.targets'))" />
   </Target>
 </Project>

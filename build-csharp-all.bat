@@ -1,16 +1,19 @@
-SET BUILDPLATFORM=x64
-CALL set-envs.bat
-CALL make-zlib.bat
-CALL make-boost.bat
+@echo off
+
+set BUILDPLATFORM=x64
+call set-envs.bat
+call make-zlib.bat
+call make-boost.bat
 python build-rdkit-csharp.py
 
-SET BUILDPLATFORM=x86
-CALL set-envs.bat
-CALL make-zlib.bat
-CALL make-boost.bat
+set BUILDPLATFORM=x86
+call set-envs.bat
+call make-zlib.bat
+call make-boost.bat
 python build-rdkit-csharp.py
 
-CALL build-csharp-wrap.bat
+set BUILDPLATFORM=
+
+call build-csharp-wrap.bat
 
 python build-nuget-csharp.py
-
