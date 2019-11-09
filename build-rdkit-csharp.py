@@ -3,9 +3,9 @@
 swig_patch_enabled: bool = True
 
 import os
+import sys
 import subprocess
 import re
-import subprocess
 import shutil
 import glob
 
@@ -22,6 +22,7 @@ rdkit_dir = os.environ['RDKITDIR']
 zlib_dir = os.environ['ZLIBDIR']
 boost_dir = os.environ['BOOSTDIR']
 eigen_dir = os.environ['EIGENDIR']
+swig_dir = os.environ['SWIGDIR']
 build_dir = os.environ['BUILDDIR']
 build_dir_for_csharp = os.environ['BUILDDIRCSHARP']
 rdkit_csharp_build_dir = os.path.join(rdkit_dir, build_dir_for_csharp)
@@ -63,11 +64,19 @@ cmd = 'cmake ' \
     '..'
 cmd = cmd.replace('\\', '/')
 print(cmd)
-subprocess.check_call(cmd)
+try:
+	subprocess.check_call(cmd)
+except CalledProcessError as e:
+	print(e)
+	sys.exit(e.returncode)
 
 cmd = 'MSBuild RDKit.sln /p:Configuration=Release,Platform=' + ms_build_platform + ' /maxcpucount'
 print(cmd)
-subprocess.check_call(cmd)
+try:
+	subprocess.check_call(cmd)
+except CalledProcessError as e:
+	print(e)
+	sys.exit(e.returncode)
 
 dll_dest_dir = os.path.join(rdkit_csharp_wrapper_dir, build_platform)
 os.makedirs(dll_dest_dir, exist_ok = True)

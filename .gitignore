@@ -4,6 +4,7 @@
 /eigen-*/
 /rdkit-*/
 /zlib-*/
+/swigwin-*/
 
 # Build directory
 

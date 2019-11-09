@@ -7,7 +7,17 @@
 @set $EXE=%$EXE:\=/%
 %$EXE%
 MSBuild RDKit.sln /p:Configuration=Release,Platform=%MSBUILDPLATFORM% /maxcpucount
+if errorlevel 1 goto :ERROREND
 MSBuild INSTALL.vcxproj /p:Configuration=Release,Platform=%MSBUILDPLATFORM% /maxcpucount
+if errorlevel 1 goto :ERROREND
 @set $EXE=
 @endlocal
 @popd
+
+goto :END
+
+:ERROREND
+@echo Failed to make rdkit.
+exit /b 1
+
+:END
