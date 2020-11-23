@@ -7,7 +7,7 @@
 
 - Registered NuGet package was built using the following versions.
   - [RDKit Release_2019.09.1](https://github.com/rdkit/rdkit/releases/tag/Release_2019_09_1)
-  - [Boost 1.74.0](https://sourceforge.net/projects/boost/files/boost-binaries/1.72.0/)
+  - [Boost 1.74.0](https://sourceforge.net/projects/boost/files/boost-binaries/1.74.0/)
   - [Eigen 3.3.8](https://gitlab.com/libeigen/eigen/-/releases/3.3.8)
   - [zlib 1.2.11](https://zlib.net/zlib-1.2.11.tar.gz)
   - [Python](https://www.python.org/) 3.7.9
