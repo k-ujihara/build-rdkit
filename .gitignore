@@ -5,11 +5,13 @@
 /rdkit-*/
 /zlib-*/
 /swigwin-*/
+/freetype-*/
 
 # Build directory
 
 buildx86*/
 buildx64*/
+Testing/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -33,7 +33,6 @@ echo Clean platform %~1.
 call custom-dir.bat
 call :DEL1 "%RDKITDIR%\build%~1"
 call :DEL1 "%RDKITDIR%\build%~1CSharp
-call :DEL1 "%BOOSTDIR%\stage\%~1" 
 call :DEL1 "%ZLIBDIR%\build%~1"
 exit /b
 
