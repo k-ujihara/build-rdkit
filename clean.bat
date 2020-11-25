@@ -3,6 +3,8 @@ rem Erase all environmental variable used.
 
 call :GODEL x64
 call :GODEL x86
+if exist "%RDKITDIR%\Code\JavaWrappers\csharp_wrapper\RDKit.DotNetWrap.nuspec" del /Q "%RDKITDIR%\Code\JavaWrappers\csharp_wrapper\RDKit.DotNetWrap.nuspec"
+if exist "%RDKITDIR%\Code\JavaWrappers\csharp_wrapper\RDKit.DotNetWrap.targets" del /Q "%RDKITDIR%\Code\JavaWrappers\csharp_wrapper\RDKit.DotNetWrap.targets"
 call :CLEARENVVARS
 
 goto :END
@@ -32,6 +34,7 @@ rem Delete built directory.
 echo Clean platform %~1.
 call custom-dir.bat
 call :DEL1 "%RDKITDIR%\build%~1"
+call :DEL1 "%RDKITDIR%\Code\JavaWrappers\csharp_wrapper\%~1"
 call :DEL1 "%RDKITDIR%\build%~1CSharp
 call :DEL1 "%ZLIBDIR%\build%~1"
 exit /b

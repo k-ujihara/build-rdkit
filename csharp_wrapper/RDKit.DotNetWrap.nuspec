@@ -9,8 +9,8 @@
 	<licenseUrl>https://github.com/rdkit/rdkit/blob/master/license.txt</licenseUrl>
     <projectUrl>https://github.com/kazuyaujihara/build-rdkit</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>.NET binding of RDKit Release_Release_2019_09_1. Supports AnyCPU, x86 and x64 on Windows.</description>
-    <releaseNotes>This release is based on RDKit Release_2019_09_1, Boost 1.72.0, zlib 1.2.11 and Eigen 3.3.8.</releaseNotes>
+    <description>.NET binding of RDKit Release_0000_00_0. Supports AnyCPU, x86 and x64 on Windows.</description>
+    <releaseNotes>This release is based on RDKit Release_0000_00_0, Boost 0.0.0, zlib 0.0.0 and Eigen 0.0.0.</releaseNotes>
     <copyright>Copyright © 2019-2020 Kazuya Ujihara</copyright>
     <tags>rdkit</tags>
   </metadata>

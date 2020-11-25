@@ -11,7 +11,7 @@
   - [Eigen 3.3.8](https://gitlab.com/libeigen/eigen/-/releases/3.3.8)
   - [zlib 1.2.11](https://zlib.net/zlib-1.2.11.tar.gz)
   - [Python](https://www.python.org/) 3.7.9
-  - [CMAKE](https://cmake.org/) 3.19.0
+  - [CMAKE](https://cmake.org/) 3.12.18081601-MSVC_2
   - [SWIG](http://www.swig.org/) 4.0.2
   - [NuGet](https://nuget.org) 5.3.1
   - Visual Studio 2017
