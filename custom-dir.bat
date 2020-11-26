@@ -1,11 +1,14 @@
 @rem Customize this file according to your environment.
 
+@set THISDIR=%~dp0
+
 @rem To select Python, uncomment and customize next line.
 @rem set PYTHONVERSION=Python36
 
 set MINORVERSION=3
 
-set RDKITDIR=%THISDIR%rdkit-Release_2019_09_1
+set RDKITDIR=%THISDIR%rdkit-Release_2020_09_1
+set RDKITBUILDROOTDIR=%RDKITDIR%
 set BOOSTDIR=%THISDIR%boost_1_74_0
 set EIGENDIR=%THISDIR%eigen-3.3.8
 set ZLIBDIR=%THISDIR%zlib-1.2.11

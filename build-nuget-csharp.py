@@ -25,6 +25,7 @@ def replace_file_string(filename, pattern_replace):
 this_dir: str = os.environ["THISDIR"]
 boost_dir = os.environ["BOOSTDIR"]
 rdkit_dir = os.environ["RDKITDIR"]
+rdkit_build_root_dir = os.environ["RDKITBUILDROOTDIR"]
 zlib_dir = os.environ["ZLIBDIR"]
 eigen_dir = os.environ["EIGENDIR"]
 minor_version = os.environ["MINORVERSION"] if "MINORVERSION" in os.environ else "1"

@@ -24,6 +24,7 @@
 - Install Visual Studio 2017 enabling C++ and C#.
 - Install CMAKE and add installed directory to PATH.
 - Install Python into _default folder_ enabling pip using offical installer.
+- Clone this repository to some direcotry. A short name is highly recommended for the directory.
 - Download the following source archives and extract them here.
   - [RDKit](hhttps://github.com/rdkit/rdkit/) to `rdkit-Release_####_##_#`  
   - [Eigen3](http://eigen.tuxfamily.org/) to `eigen-#.#.#`

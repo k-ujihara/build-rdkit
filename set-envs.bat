@@ -74,7 +74,7 @@
 
 @pushd "%PYTHONDIR%"
 @echo Install numpy.
-@.\Scripts\pip install numpy
+@.\Scripts\pip install numpy pandas pillow
 
 @rem The followings are required to run tests.
 
@@ -98,11 +98,6 @@
 @set PYTHONPATH=%RDKITDIR%;%PYTHONPATH%
 :L__RdkitDir_PythonPath_Added
 
-@rem Some tests requires pandas and pillow package.
-@echo Install pandas.
-@.\Scripts\pip install pandas
-@echo Install pillow.
-@.\Scripts\pip install pillow
 @popd
 
 @goto :END

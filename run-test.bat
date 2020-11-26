@@ -1,11 +1,16 @@
 set BUILDPLATFORM=x64
-call set-envs.bat
-@pushd %RDKITDIR%\buildx64CSharp
-ctest -j %number_of_cores% --output-on-failure -T Test
-@popd
+call :RUNTEST
 
 set BUILDPLATFORM=x86
+call :RUNTEST
+
+goto :END
+
+:RUNTEST
 call set-envs.bat
-@pushd %RDKITDIR%\buildx86CSharp
+@pushd %RDKITBUILDROOTDIR%\build%BUILDPLATFORM%CSharp
 ctest -j %number_of_cores% --output-on-failure -T Test
 @popd
+exit /b
+
+:END

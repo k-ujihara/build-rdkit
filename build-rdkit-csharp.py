@@ -7,6 +7,7 @@ import re
 import shutil
 
 swig_patch_enabled: bool = True
+old_rdkit_cmake: bool = False
 
 
 def replace_file_string(filename, pattern_replace):
@@ -22,14 +23,15 @@ def replace_file_string(filename, pattern_replace):
 
 this_dir = os.environ["THISDIR"]
 rdkit_dir = os.environ["RDKITDIR"]
+rdkit_build_root_dir = os.environ["RDKITBUILDROOTDIR"]
 zlib_dir = os.environ["ZLIBDIR"]
 boost_dir = os.environ["BOOSTDIR"]
 eigen_dir = os.environ["EIGENDIR"]
 swig_dir = os.environ["SWIG_DIR"]
 freetype_dir = os.environ["FREETYPEDIR"]
 build_dir = os.environ["BUILDDIR"]
-build_dir_for_csharp = os.environ["BUILDDIRCSHARP"]
-rdkit_csharp_build_dir = os.path.join(rdkit_dir, build_dir_for_csharp)
+build_dir_name_for_csharp = os.environ["BUILDDIRCSHARP"]
+rdkit_csharp_build_dir = os.path.join(rdkit_build_root_dir, build_dir_name_for_csharp)
 build_platform = os.environ["BUILDPLATFORM"]
 g_option_of_cmake = cmake_g = os.environ["CMAKEG"]
 ms_build_platform = os.environ["MSBUILDPLATFORM"]
@@ -49,26 +51,71 @@ if swig_patch_enabled:
         [("boost::int32_t", "int32_t"), ("boost::uint32_t", "uint32_t")],
     )
 
-cmd = (
-    "cmake "
-    + "-DRDK_BUILD_SWIG_WRAPPERS=ON "
-    + "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON "
-    + "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF "
-    + "-DRDK_BUILD_PYTHON_WRAPPERS=OFF "
-    + f"-DBOOST_ROOT={boost_dir} "
-    + f"-DBOOST_INCLUDEDIR={boost_dir} "
-    + f"-DBOOST_LIBRARYDIR={boost_bin_dir} "
-    + f"-DZLIB_LIBRARY={zlib_lib} "
-    + f"-DZLIB_INCLUDE_DIR={zlib_dir} "
-    + f"-DEIGEN3_INCLUDE_DIR={eigen_dir} "
-    + "-DRDK_INSTALL_INTREE=OFF "
-    + "-DRDK_BUILD_CPP_TESTS=ON "
-    + "-DRDK_BUILD_THREADSAFE_SSS=ON "
-    + "-DRDK_BUILD_INCHI_SUPPORT=ON "
-    + "-DRDK_BUILD_AVALON_SUPPORT=ON "
-    + f'-G"{g_option_of_cmake}" '
-    + ".."
-)
+# good for 2019_09_1
+if old_rdkit_cmake:
+    cmd = (
+        "cmake "
+        + ".. "
+        + "-DRDK_BUILD_SWIG_WRAPPERS=ON "
+        + "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON "
+        + "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF "
+        + "-DRDK_BUILD_PYTHON_WRAPPERS=OFF "
+        + f"-DBOOST_ROOT={boost_dir} "
+        + f"-DBOOST_INCLUDEDIR={boost_dir} "
+        + f"-DBOOST_LIBRARYDIR={boost_bin_dir} "
+        + f"-DZLIB_LIBRARY={zlib_lib} "
+        + f"-DZLIB_INCLUDE_DIR={zlib_dir} "
+        + f"-DEIGEN3_INCLUDE_DIR={eigen_dir} "
+        + "-DRDK_INSTALL_INTREE=OFF "
+        + "-DRDK_BUILD_CPP_TESTS=ON "
+        + "-DRDK_USE_BOOST_REGEX=ON "
+        + "-DRDK_BUILD_COORDGEN_SUPPORT=ON "
+        + "-DRDK_BUILD_MAEPARSER_SUPPORT=ON "
+        + "-DRDK_OPTIMIZE_POPCNT=ON "
+        + "-DRDK_BUILD_FREESASA_SUPPORT=OFF "
+        + "-DRDK_BUILD_CAIRO_SUPPORT=OFF "
+        + "-DRDK_BUILD_THREADSAFE_SSS=ON "
+        + "-DRDK_BUILD_INCHI_SUPPORT=ON "
+        + "-DRDK_BUILD_AVALON_SUPPORT=ON "
+        + f"-G\"{g_option_of_cmake}\" "
+    )
+else:
+    cmd = (
+        "cmake "
+        + ".. "
+        # + "-DCMAKE_BUILD_TYPE=Release "
+        + "-DRDK_BUILD_SWIG_WRAPPERS=ON "
+        + "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON "
+        + "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF "
+        + "-DRDK_BUILD_PYTHON_WRAPPERS=OFF "
+        + "-DRDK_SWIG_STATIC=OFF "
+        + "-DRDK_INSTALL_STATIC_LIBS=OFF "
+        + "-DRDK_INSTALL_DLLS_MSVC=ON "
+        + f"-DBOOST_ROOT={boost_dir} "
+        + f"-DBOOST_INCLUDEDIR={boost_dir} "
+        + f"-DBOOST_LIBRARYDIR={boost_bin_dir} "
+        + f"-DZLIB_LIBRARY={zlib_lib} "
+        + f"-DZLIB_INCLUDE_DIR={zlib_dir} "
+        + f"-DEIGEN3_INCLUDE_DIR={eigen_dir} "
+        + f"-DFREETYPE_LIBRARY={freetype_dir}\\objs\\x64\\Release\\freetype.lib "
+        + f"-DFREETYPE_INCLUDE_DIRS={freetype_dir}\\include "
+        + "-DRDK_INSTALL_INTREE=OFF "
+        + "-DRDK_BUILD_CPP_TESTS=ON "
+        # + "-DRDK_BUILD_CPP_TESTS=OFF "
+        # + "-DRDK_USE_BOOST_REGEX=ON "
+        # + "-DRDK_BUILD_COORDGEN_SUPPORT=ON "
+        # + "-DRDK_BUILD_MAEPARSER_SUPPORT=ON "
+        # + "-DRDK_OPTIMIZE_POPCNT=ON "
+        # + "-DRDK_BUILD_TEST_GZIP=ON "
+        # + "-DRDK_BUILD_TEST_GZIP=OFF "
+        # + "-DRDK_BUILD_FREESASA_SUPPORT=OFF "
+        # + "-DRDK_BUILD_CAIRO_SUPPORT=OFF "
+        + "-DRDK_BUILD_THREADSAFE_SSS=ON "
+        + "-DRDK_BUILD_INCHI_SUPPORT=ON "
+        + "-DRDK_BUILD_AVALON_SUPPORT=ON "
+        + "-DRDK_USE_URF=ON "
+        + f"-G\"{g_option_of_cmake}\" "
+    )
 cmd = cmd.replace("\\", "/")
 print(cmd)
 try:
@@ -88,6 +135,7 @@ try:
 except subprocess.CalledProcessError as e:
     print(e)
     sys.exit(e.returncode)
+exit(0)
 
 dll_dest_dir = os.path.join(rdkit_csharp_wrapper_dir, build_platform)
 os.makedirs(dll_dest_dir, exist_ok=True)
