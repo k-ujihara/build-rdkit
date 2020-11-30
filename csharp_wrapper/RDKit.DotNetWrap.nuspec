@@ -10,7 +10,7 @@
     <projectUrl>https://github.com/kazuyaujihara/build-rdkit</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>.NET binding of RDKit Release_0000_00_0. Supports AnyCPU, x86 and x64 on Windows.</description>
-    <releaseNotes>This release is based on RDKit Release_0000_00_0, Boost 0.0.0, zlib 0.0.0 and Eigen 0.0.0.</releaseNotes>
+    <releaseNotes>This release is based on RDKit Release_0000_00_0, Boost 0.0.0, and Eigen 0.0.0.</releaseNotes>
     <copyright>Copyright © 2019-2020 Kazuya Ujihara</copyright>
     <tags>rdkit</tags>
   </metadata>

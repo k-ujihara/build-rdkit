@@ -1,6 +1,6 @@
 # RDKit for .NET Framework
 
-- This library is .NET framework wrapper of RDKit.
+- .NET Framework wrapper of RDKit.
 - NuGet package is available at [https://www.nuget.org/packages/RDKit.DotNetWrap/](https://www.nuget.org/packages/RDKit.DotNetWrap/).
 
 - Example codes are in `RDKit2DotNet.Example` directory.
@@ -21,10 +21,9 @@
 ### Preparation
 
 - Use Windows 10 (x64).
-- Install Visual Studio 2017 enabling C++ and C#.
-- Install CMAKE and add installed directory to PATH.
+- Install Visual Studio 2017 enabling C++, C&#35; and CMAKE.
 - Install Python into _default folder_ enabling pip using offical installer.
-- Clone this repository to some direcotry. A short name is highly recommended for the directory.
+- Clone this repository to some directory. A short name is highly recommended for the directory.
 - Download the following source archives and extract them here.
   - [RDKit](hhttps://github.com/rdkit/rdkit/) to `rdkit-Release_####_##_#`  
   - [Eigen3](http://eigen.tuxfamily.org/) to `eigen-#.#.#`
@@ -51,7 +50,8 @@
 - Execute `set BUILDPLATFORM=x64` or `set BUILDPLATFORM=x86`.
 - Execute `set-envs.bat`.
 - Execute `make-zlib.bat`.
-- Execute `python build-rdkit-csharp.py`.
+- Execute `python build-rdkit-csharp.py --make_native --build_platform %BUILDPLATFORM%`
+- Execute `build-rdkit-csharp.py --build_wrapper`
 - Close 'Developer Command Prompt for VS 2017'.
 - C&#35; project file is created in `(RDKit-directory)/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet.csproj`.
 - Modify the project's codes or customize `build-rdkit-csharp.py` if required.
@@ -63,5 +63,5 @@
 
 - Build assemblies for both x64 and x86 according to above procedure.
 - Execute `set-envs.bat`.
-- Execute `build-nuget-csharp.py`.
+- Execute `python build-rdkit-csharp.py --build_nuget`.
 - NuGet package is created as `(RDKit-directory)/Code/JavaWrappers/csharp_wrapper/RDKit.DotNetWrap.#.#.#.nupkg`.

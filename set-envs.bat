@@ -73,15 +73,17 @@
 :L__EndPYTHONDIR
 
 @pushd "%PYTHONDIR%"
-@echo Install numpy.
-@.\Scripts\pip install numpy pandas pillow
+@REM @echo Install numpy.
+@REM @.\Scripts\pip install numpy pandas pillow
 
 @rem The followings are required to run tests.
 
 @rem To Path variable add Boost directory.
 @if "%BUILDPLATFORM_CHANGED%" EQU "" goto :L__EndAddedBOOSTDIRtoPATH
-	@echo Add %BOOSTDIR%\stage\%BUILDPLATFORM%\lib to PATH.
-	@PATH %BOOSTDIR%\stage\%BUILDPLATFORM%\lib;%Path%
+	set __to_add=%BOOSTDIR%\lib%ADDRESSMODEL%-msvc-14.1
+	@echo Add %__to_add% to PATH.
+	@PATH %__to_add%;%Path%
+	set __to_add=
 )
 :L__EndAddedBOOSTDIRtoPATH
 

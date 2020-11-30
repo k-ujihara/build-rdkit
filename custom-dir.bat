@@ -5,8 +5,9 @@
 @rem To select Python, uncomment and customize next line.
 @rem set PYTHONVERSION=Python36
 
-set MINORVERSION=3
-
+@REM set MINORVERSION=3
+@REM set RDKITDIR=%THISDIR%rdkit-Release_2019_09_1
+set MINORVERSION=1
 set RDKITDIR=%THISDIR%rdkit-Release_2020_09_1
 set RDKITBUILDROOTDIR=%RDKITDIR%
 set BOOSTDIR=%THISDIR%boost_1_74_0
