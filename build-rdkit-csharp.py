@@ -6,6 +6,7 @@ Notes:
 
 import argparse
 import glob
+import logging
 import os
 import pathlib
 import re
@@ -13,7 +14,9 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, NamedTuple, Optional, Sequence, cast
+from typing import (Any, Dict, List, Mapping, NamedTuple, Optional, Sequence,
+                    cast)
+
 
 project_name: str = "RDKit.DotNetWrap"
 
@@ -60,10 +63,10 @@ def replace_file_string(filename, pattern_replace, make_backup: bool = False):
 
 def call_subprocess(cmd: str) -> None:
     try:
-        print(cmd)
+        logging.info(cmd)
         subprocess.check_call(cmd)
     except subprocess.CalledProcessError as e:
-        print(e)
+        logging.warn(e)
         sys.exit(e.returncode)
 
 
@@ -249,6 +252,7 @@ class NativeMaker:
         if dll_dest_path.exists():
             shutil.rmtree(dll_dest_path)
         dll_dest_path.mkdir()
+        logging.info(f"Copy DLLs to {dll_dest_path}.")
 
         # copy "RDKFuncs.dll"
         shutil.copy2(
@@ -271,7 +275,9 @@ class NativeMaker:
         for filename in glob.glob(
             str(self.boost_path / f"lib{self.address_model}-msvc-14.1" / "*.dll")
         ):
-            if re.match(r".*\-vc141\-mt\-x(32|64)\-\d_\d\d\.dll", filename):
+            if re.match(
+                r".*\-vc141\-mt\-x(32|64)\-\d_\d\d\.dll", filename
+            ) and not os.path.basename(filename).startswith("boost_python"):
                 shutil.copy2(filename, dll_dest_path)
 
         # copy fonttype
