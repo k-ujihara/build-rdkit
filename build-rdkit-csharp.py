@@ -68,9 +68,29 @@ def to_g_option_of_cmake(build_platform: str) -> str:
 
 class Config(object):
     def __init__(
-        self, build_platform: Optional[str] = None,
+        self, 
+        build_platform: Optional[str] = None,
+        this_path: Optional[Path] = None,
+        rdkit_path: Optional[Path] = None,
+        zlib_path: Optional[Path] = None,
+        boost_path: Optional[Path] = None,
+        eigen_path: Optional[Path] = None,
+        swig_path: Optional[Path] = None,
+        freetype_path: Optional[Path] = None,
+        number_of_processors: Optional[Path] = None,
+        minor_version: Optional[Path] = None,  
     ):
-        self.build_platform = build_platform
+        self.build_platform: Optional[str] = build_platform
+        self.this_path = here if this_path is None else this_path
+        self.rdkit_path = get_path_from_env("RDKITDIR")
+        self.zlib_path = get_path_from_env("ZLIBDIR")
+        self.boost_path = get_path_from_env("BOOSTDIR")
+        self.eigen_path = get_path_from_env("EIGENDIR")
+        self.swig_path = get_path_from_env("SWIG_DIR")
+        self.freetype_path = get_path_from_env("FREETYPEDIR")
+        self.number_of_processors = os.environ["NUMBER_OF_PROCESSORS"]
+        minor_version = os.environ["MINORVERSION"] if "MINORVERSION" in os.environ else "1"
+
 
     @property
     def g_option_of_cmake(self) -> str:
@@ -137,13 +157,18 @@ class Config(object):
         return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(eigen_path))
 
 
-def replace_file_string(filename, pattern_replace):
+def replace_file_string(filename, pattern_replace, make_backup: bool = False):
+    bak_filename = f"{filename}.bak"
+    if os.path.exists(bak_filename):
+        shutil.copy(bak_filename, filename)
     with open(filename, "r", encoding="utf-8") as file:
         filedata = file.read()
         for pattern, replace in pattern_replace:
             filedata = re.sub(
                 pattern, replace, filedata, flags=re.MULTILINE | re.DOTALL
             )
+    if make_backup:
+        shutil.copy(filename, bak_filename)
     with open(filename, "w", encoding="utf-8") as file:
         file.write(filedata)
 
@@ -202,16 +227,19 @@ def _get_cmake_rdkit_cmd_line(config: Config) -> str:
         )
     return cmd
 
+
 def _make_rdkit_cmake(config: Config) -> None:
     cmd = _get_cmake_rdkit_cmd_line(config)
     cmd = cmd.replace("\\", "/")
-    call_subprocess(cmd)    
+    call_subprocess(cmd)
+
 
 def _build_rdkit_native(config: Config) -> None:
     cmd = f"MSBuild RDKit.sln /p:Configuration=Release,Platform={config.ms_build_platform} /maxcpucount"
     call_subprocess(cmd)
 
-def _copy_fix_to_csharp_wrapper(config: Config) -> None:
+
+def _copy_to_csharp_wrapper(config: Config) -> None:
     assert config.rdkit_csharp_wrapper_path and config.build_platform
     dll_dest_path = config.rdkit_csharp_wrapper_path / config.build_platform
     if dll_dest_path.exists():
@@ -247,15 +275,10 @@ def _copy_fix_to_csharp_wrapper(config: Config) -> None:
     if config.get_rdkit_version() >= 2020091:
         assert freetype_path
         for filename in glob.glob(
-            str(
-                freetype_path
-                / "objs"
-                / config.ms_build_platform
-                / "Release"
-                / "*.dll"
-            )
+            str(freetype_path / "objs" / config.ms_build_platform / "Release" / "*.dll")
         ):
             shutil.copy2(filename, dll_dest_path)
+
 
 def _patch_rdkit_swig_files(config: Config) -> None:
     # Customize the followings if required.
@@ -314,36 +337,43 @@ def make_native(config: Config) -> None:
         if swig_patch_enabled:
             assert rdkit_path
             replace_file_string(
-                str(
-                    rdkit_path
-                    / "Code"
-                    / "JavaWrappers"
-                    / "csharp_wrapper"
-                    / "GraphMolCSharp.i"
-                ),
+                config.rdkit_csharp_wrapper_path / "GraphMolCSharp.i",
                 [("boost::int32_t", "int32_t"), ("boost::uint32_t", "uint32_t")],
+                make_backup=True,
             )
         _make_rdkit_cmake(config)
         _build_rdkit_native(config)
-        _copy_fix_to_csharp_wrapper(config)
+        _copy_to_csharp_wrapper(config)
     finally:
         os.chdir(_curdir)
 
 
 def build_csharp_wrapper(config: Config) -> None:
-    _patch_rdkit_swig_files(config)       
+    _patch_rdkit_swig_files(config)
 
     path_RDKit2DotNet_csproj = config.rdkit_csharp_wrapper_path / "RDKit2DotNet.csproj"
+
+    assert config.rdkit_csharp_wrapper_path
+    contents_replaced = ""
+    for cpu_model in cpu_models:
+        for filename in glob.glob(
+            str(config.rdkit_csharp_wrapper_path / cpu_model / "*.dll")
+        ):
+            basename = os.path.basename(filename)
+            contents_replaced += f"<Content Include=\"{cpu_model}\\\\{basename}\"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>\n"
+    print(contents_replaced)
+    # exit(0)
     replace_file_string(
-        str(path_RDKit2DotNet_csproj),
+        path_RDKit2DotNet_csproj,
         [
             (
                 r"\<Content Include\=\"RDKFuncs\.dll\"\>.*\<\/Content\>",
-                r'<Content Include="x64\\RDKFuncs.dll"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>'  # NOQA
-                r'<Content Include="x86\\RDKFuncs.dll"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>',  # NOQA
+                contents_replaced,
             )
         ],
+        make_backup=True,
     )
+
     for src, dst in (
         (
             this_path / "csharp_wrapper" / "RDKitCSharpTest.csproj",
