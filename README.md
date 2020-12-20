@@ -6,7 +6,7 @@
 - Example codes are in `RDKit2DotNet.Example` directory.
 
 - Registered NuGet package was built using the following versions.
-  - [RDKit Release_2020.09.1](https://github.com/rdkit/rdkit/releases/tag/Release_2020_09_1) and [RDKit Release_2019.09.1](https://github.com/rdkit/rdkit/releases/tag/Release_2019_09_1)
+  - [RDKit Release_2020.09.3](https://github.com/rdkit/rdkit/releases/tag/Release_2020_09_3) and [RDKit Release_2019.09.1](https://github.com/rdkit/rdkit/releases/tag/Release_2019_09_1)
   - [Boost 1.74.0](https://sourceforge.net/projects/boost/files/boost-binaries/1.74.0/)
   - [Eigen 3.3.8](https://gitlab.com/libeigen/eigen/-/releases/3.3.8)
   - [Python](https://www.python.org/) 3.8.3
