@@ -68,7 +68,7 @@ def call_subprocess(cmd: str) -> None:
     try:
         _env: Dict[str, str] = {}
         _env.update(os.environ)
-        _CL_env_for_MSVC: Mapping[str, str] = { "CL": "/source-charset:utf-8 /execution-charset:utf-8 /W0" }
+        _CL_env_for_MSVC: Mapping[str, str] = { "CL": "/source-charset:utf-8 /execution-charset:utf-8 /W3" }
         _env.update(_CL_env_for_MSVC)
         logging.info(cmd)
         subprocess.check_call(cmd, env=_env)

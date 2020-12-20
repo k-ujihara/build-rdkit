@@ -2,10 +2,8 @@
 
 @set THISDIR=%~dp0
 
-set MINORVERSION=3
-set RDKITDIR=%THISDIR%rdkit-Release_2019_09_1
 set MINORVERSION=1
-set RDKITDIR=%THISDIR%rdkit-Release_2020_09_1
+set RDKITDIR=%THISDIR%rdkit-Release_2020_09_3
 set BOOSTDIR=%THISDIR%boost_1_74_0
 set EIGENDIR=%THISDIR%eigen-3.3.8
 set FREETYPEDIR=%THISDIR%freetype-2.10.4

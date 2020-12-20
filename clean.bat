@@ -1,2 +1,2 @@
 call custom-dir.bat
-python .\build-rdkit-csharp.py --clean
+python .\build_rdkit_csharp.py --clean
