@@ -6,13 +6,16 @@
     <title>RDKit C# Binding</title>
     <authors>Kazuya Ujihara</authors>
     <owners>kazuya</owners>
-	<licenseUrl>https://github.com/rdkit/rdkit/blob/master/license.txt</licenseUrl>
+	  <licenseUrl>https://licenses.nuget.org/BSD-3-Clause</licenseUrl>
     <projectUrl>https://github.com/kazuyaujihara/build-rdkit</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>.NET binding of RDKit Release_0000_00_0. Supports AnyCPU, x86 and x64 on Windows.</description>
     <releaseNotes>This release is based on RDKit Release_0000_00_0, Boost 0.0.0, and Eigen 0.0.0.</releaseNotes>
     <copyright>Copyright © 2019-2020 Kazuya Ujihara</copyright>
     <tags>rdkit</tags>
+    <dependencies>
+      <group targetFramework=".NETFramework4.0" />
+    </dependencies>    
   </metadata>
   <files>
     <file src="RDKit.DotNetWrap.targets" target="build/" />

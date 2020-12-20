@@ -6,11 +6,10 @@
 - Example codes are in `RDKit2DotNet.Example` directory.
 
 - Registered NuGet package was built using the following versions.
-  - [RDKit Release_2019.09.1](https://github.com/rdkit/rdkit/releases/tag/Release_2019_09_1)
+  - [RDKit Release_2020.09.1](https://github.com/rdkit/rdkit/releases/tag/Release_2020_09_1) and [RDKit Release_2019.09.1](https://github.com/rdkit/rdkit/releases/tag/Release_2019_09_1)
   - [Boost 1.74.0](https://sourceforge.net/projects/boost/files/boost-binaries/1.74.0/)
   - [Eigen 3.3.8](https://gitlab.com/libeigen/eigen/-/releases/3.3.8)
-  - [zlib 1.2.11](https://zlib.net/zlib-1.2.11.tar.gz)
-  - [Python](https://www.python.org/) 3.7.9
+  - [Python](https://www.python.org/) 3.8.3
   - [CMAKE](https://cmake.org/) 3.12.18081601-MSVC_2
   - [SWIG](http://www.swig.org/) 4.0.2
   - [NuGet](https://nuget.org) 5.3.1
@@ -27,7 +26,6 @@
 - Download the following source archives and extract them here.
   - [RDKit](hhttps://github.com/rdkit/rdkit/) to `rdkit-Release_####_##_#`  
   - [Eigen3](http://eigen.tuxfamily.org/) to `eigen-#.#.#`
-  - [zlib](http://zlib.net/) to `zlib-#.#.##`
   - [SWIG](http://www.swig.org/) to `swigwin-#.#.#`
 - Download binery archives of both 32-bit and 64-bit versions of Boost for Visual Studio 2017, ie, msvc-14.1.
   - [https://sourceforge.net/projects/boost/files/boost-binaries/](https://sourceforge.net/projects/boost/files/boost-binaries/).
@@ -41,27 +39,15 @@
 ### Build and create NuGet package
 
 - Open 'Developer Command Prompt for VS 2017'.
-- Execute `build-csharp-all.bat`.
+- Execute `build_all.bat`.
   - Procedure to build them step by step is described below.
 
-#### Build assembly
+#### Step by Step
 
 - Open 'Developer Command Prompt for VS 2017'.
-- Execute `set BUILDPLATFORM=x64` or `set BUILDPLATFORM=x86`.
-- Execute `set-envs.bat`.
-- Execute `make-zlib.bat`.
-- Execute `python build-rdkit-csharp.py --make_native --build_platform %BUILDPLATFORM%`
-- Execute `build-rdkit-csharp.py --build_wrapper`
-- Close 'Developer Command Prompt for VS 2017'.
+- Execute `custom-dir.bat` to set up environment variables.
+- Execute `python .\build-rdkit-csharp.py --build_freetype --build_platform all` to make freetype.
+- Execute `python .\build-rdkit-csharp.py --build_rdkit --build_platform all` to patch rdkit and make it.
+- Execute `python .\build-rdkit-csharp.py --build_wrapper` to make rdkit .NET wrapper and patch it.
 - C&#35; project file is created in `(RDKit-directory)/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet.csproj`.
-- Modify the project's codes or customize `build-rdkit-csharp.py` if required.
-- To execute `RDKit2DotNet.dll`, do the followings.
-  - Add the directory containing Boost DLLs to `Path`, or copy all Boost DLLs into the same directory of `RDKFuncs.dll`.
-  - Set environmental variable `RDBASE` proper value if necessary.
-
-#### Build NuGet package
-
-- Build assemblies for both x64 and x86 according to above procedure.
-- Execute `set-envs.bat`.
-- Execute `python build-rdkit-csharp.py --build_nuget`.
-- NuGet package is created as `(RDKit-directory)/Code/JavaWrappers/csharp_wrapper/RDKit.DotNetWrap.#.#.#.nupkg`.
+- Execute `python .\build-rdkit-csharp.py --build_nuget` to make nuget package.

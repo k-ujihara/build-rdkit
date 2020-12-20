@@ -14,15 +14,18 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import (Any, Dict, List, Mapping, NamedTuple, Optional, Sequence,
-                    cast)
+from typing import Any, Dict, List, Mapping, NamedTuple, Optional, Sequence, cast
 
+logging.basicConfig(level=logging.DEBUG)
 
 project_name: str = "RDKit.DotNetWrap"
 
 
 here = Path(__file__).parent.resolve()
-cpu_models: Sequence[str] = ["x86", "x64"]
+cpu_models: Sequence[str] = (
+    "x86",
+    "x64",
+)
 _platform_to_g_option_catalog: Mapping[str, str] = {
     "x86": "Visual Studio 15 2017",
     "x64": "Visual Studio 15 2017 Win64",
@@ -63,17 +66,28 @@ def replace_file_string(filename, pattern_replace, make_backup: bool = False):
 
 def call_subprocess(cmd: str) -> None:
     try:
+        _env: Dict[str, str] = {}
+        _env.update(os.environ)
+        _CL_env_for_MSVC: Mapping[str, str] = { "CL": "/source-charset:utf-8 /execution-charset:utf-8 /W0" }
+        _env.update(_CL_env_for_MSVC)
         logging.info(cmd)
-        subprocess.check_call(cmd)
+        subprocess.check_call(cmd, env=_env)
     except subprocess.CalledProcessError as e:
         logging.warn(e)
         sys.exit(e.returncode)
 
 
+def remove_if_exist(path: Path):
+    if path.exists():
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
+
+
 class Config(NamedTuple):
     this_path: Optional[Path] = None
     rdkit_path: Optional[Path] = None
-    zlib_path: Optional[Path] = None
     boost_path: Optional[Path] = None
     eigen_path: Optional[Path] = None
     swig_path: Optional[Path] = None
@@ -124,11 +138,6 @@ class NativeMaker:
         return self.config.boost_path
 
     @property
-    def zlib_path(self) -> Path:
-        assert self.config.zlib_path
-        return self.config.zlib_path
-
-    @property
     def eigen_path(self) -> Path:
         assert self.config.eigen_path
         return self.config.eigen_path
@@ -141,10 +150,6 @@ class NativeMaker:
     @property
     def boost_bin_path(self) -> Path:
         return self.boost_path / f"lib{self.build_platform}-msvc-14.1"
-
-    @property
-    def zlib_lib_path(self) -> Path:
-        return self.zlib_path / self.build_dir_name / "Release" / "zlib.lib"
 
     @property
     def rdkit_csharp_build_path(self) -> Path:
@@ -188,14 +193,6 @@ class NativeMaker:
                     + f"-DBOOST_LIBRARYDIR={str(self.boost_bin_path)} "
                 )
                 if self.config.boost_path
-                else ""
-            )
-            + (
-                (
-                    f"-DZLIB_LIBRARY={str(self.zlib_path)} "
-                    + f"-DZLIB_INCLUDE_DIR={str(self.zlib_path)} "
-                )
-                if self.config.zlib_path
                 else ""
             )
             + (
@@ -249,8 +246,7 @@ class NativeMaker:
     def _copy_to_csharp_wrapper(self) -> None:
         assert self.build_platform
         dll_dest_path = self.rdkit_csharp_wrapper_path / self.build_platform
-        if dll_dest_path.exists():
-            shutil.rmtree(dll_dest_path)
+        remove_if_exist(dll_dest_path)
         dll_dest_path.mkdir()
         logging.info(f"Copy DLLs to {dll_dest_path}.")
 
@@ -341,13 +337,27 @@ class NativeMaker:
             self.rdkit_swig_csharp_path,
         )
 
-    def make_native(self, config: Config) -> None:
+    def make_freetype(self) -> None:
+        _curdir = os.curdir
+        try:
+            os.chdir(self.freetype_path)
+            shutil.copy2(
+                self.this_path / "files" / "freetype.vcxproj",
+                self.freetype_path / "builds" / "windows" / "vc2010",
+            )
+            os.chdir(self.freetype_path / "builds" / "windows" / "vc2010")
+            logging.debug(f"current dir = {os.getcwd()}")
+            cmd = f"MSBuild freetype.sln /p:Configuration=Release,Platform={self.ms_build_platform} /maxcpucount"
+            call_subprocess(cmd)
+        finally:
+            os.chdir(_curdir)
+
+    def build_rdkit(self) -> None:
         self.rdkit_csharp_build_path.mkdir(exist_ok=True)
         _curdir = os.curdir
         os.chdir(self.rdkit_csharp_build_path)
         try:
             if self.config.swig_patch_enabled:
-                assert config.rdkit_path
                 replace_file_string(
                     self.rdkit_csharp_wrapper_path / "GraphMolCSharp.i",
                     [("boost::int32_t", "int32_t"), ("boost::uint32_t", "uint32_t")],
@@ -514,21 +524,32 @@ class NativeMaker:
         finally:
             os.chdir(_curr_dir)
 
+    def clean(self):
+        if self.config.rdkit_path:
+            for p in ("RDKit.DotNetWrap.nuspec", "RDKit.DotNetWrap.targets",):
+                    remove_if_exist(self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper" / p)
+            remove_if_exist(self.rdkit_path / "lib")
+            for p in cpu_models:
+                remove_if_exist(self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper" / p)
+                remove_if_exist(self.rdkit_path / f"build{p}CSharp")
+        if self.config.freetype_path:
+            for p in cpu_models:
+                remove_if_exist(self.freetype_path / "objs" / _platform_to_ms_form[p])
+
 
 def main() -> None:
-    build_platform: Optional[str] = None
-    if "BUILDPLATFORM" in os.environ:
-        build_platform = os.environ["BUILDPLATFORM"]
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--build_platform", choices=("x86", "x64", "all"), default=build_platform,
+        "--build_platform", choices=("x86", "x64", "all"),
     )
     parser.add_argument(
         "--disable_swig_patch", default=False, action="store_true",
     )
     parser.add_argument(
-        "--make_native", default=False, action="store_true",
+        "--build_freetype", default=False, action="store_true",
+    )
+    parser.add_argument(
+        "--build_rdkit", default=False, action="store_true",
     )
     parser.add_argument(
         "--build_wrapper", default=False, action="store_true",
@@ -548,6 +569,9 @@ def main() -> None:
     parser.add_argument(
         "--freetype_dir", type=str,
     )
+    parser.add_argument(
+        "--clean", default=False, action="store_true",
+    )
     args = parser.parse_args()
 
     def get_value_from_env(env: str, default: Optional[str] = None) -> Optional[str]:
@@ -562,10 +586,9 @@ def main() -> None:
         return Path(value) if value else None
 
     config = Config(
-        swig_patch_enabled=args.disable_swig_patch,
+        swig_patch_enabled=not args.disable_swig_patch,
         this_path=here,
         rdkit_path=path_from_arg_or_env(args.rdkit_dir, "RDKITDIR"),
-        zlib_path=path_from_arg_or_env(None, "ZLIBDIR"),
         boost_path=path_from_arg_or_env(args.boost_dir, "BOOSTDIR"),
         eigen_path=path_from_arg_or_env(args.eigen_dir, "EIGENDIR"),
         swig_path=path_from_arg_or_env(None, "SWIG_DIR"),
@@ -576,23 +599,21 @@ def main() -> None:
 
     curr_dir = os.getcwd()
     try:
-        if args.make_native:
-            if args.build_platform == "all":
-                for platform in (
-                    "x86",
-                    "x64",
-                ):
-                    NativeMaker(build_platform=platform, config=config).make_native(
-                        config
-                    )
-            else:
-                NativeMaker(
-                    build_platform=args.build_platform, config=config
-                ).make_native(config)
+        if args.clean:
+            NativeMaker(config).clean()
+        for platform in (
+            cpu_models if args.build_platform == "all" else (args.build_platform,)
+        ):
+            maker = NativeMaker(config, platform)
+            if args.build_freetype:
+                maker.make_freetype()
+            if args.build_rdkit:
+                maker.build_rdkit()
+        maker = NativeMaker(config)
         if args.build_wrapper:
-            NativeMaker(config=config).build_csharp_wrapper()
+            maker.build_csharp_wrapper()
         if args.build_nuget:
-            NativeMaker(config=config).build_nuget_package()
+            maker.build_nuget_package()
     finally:
         os.chdir(curr_dir)
 
