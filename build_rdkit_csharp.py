@@ -13,8 +13,9 @@ import re
 import shutil
 import subprocess
 import sys
+from os import PathLike
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, NamedTuple, Optional, Sequence, cast
+from typing import Any, Dict, List, Mapping, NamedTuple, Optional, Sequence, Union, cast
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -68,7 +69,9 @@ def call_subprocess(cmd: str) -> None:
     try:
         _env: Dict[str, str] = {}
         _env.update(os.environ)
-        _CL_env_for_MSVC: Mapping[str, str] = { "CL": "/source-charset:utf-8 /execution-charset:utf-8 /W3" }
+        _CL_env_for_MSVC: Mapping[str, str] = {
+            "CL": "/source-charset:utf-8 /execution-charset:utf-8"
+        }
         _env.update(_CL_env_for_MSVC)
         logging.info(cmd)
         subprocess.check_call(cmd, env=_env)
@@ -90,10 +93,15 @@ class Config(NamedTuple):
     rdkit_path: Optional[Path] = None
     boost_path: Optional[Path] = None
     eigen_path: Optional[Path] = None
+    zlib_path: Optional[Path] = None
+    libpng_path: Optional[Path] = None
+    pixman_path: Optional[Path] = None
+    cairo_path: Optional[Path] = None
     swig_path: Optional[Path] = None
     freetype_path: Optional[Path] = None
     number_of_processors: int = 1
     minor_version: int = 1
+    cairo_support: bool = False
     swig_patch_enabled: bool = True
 
 
@@ -108,10 +116,12 @@ class NativeMaker:
 
     @property
     def build_dir_name(self) -> str:
+        assert self.build_platform
         return f"build{self.build_platform}"
 
     @property
     def build_dir_name_for_csharp(self) -> str:
+        assert self.build_platform
         return f"build{self.build_platform}CSharp"
 
     @property
@@ -143,9 +153,29 @@ class NativeMaker:
         return self.config.eigen_path
 
     @property
+    def zlib_path(self) -> Path:
+        assert self.config.zlib_path
+        return self.config.zlib_path
+
+    @property
+    def libpng_path(self) -> Path:
+        assert self.config.libpng_path
+        return self.config.libpng_path
+
+    @property
+    def pixman_path(self) -> Path:
+        assert self.config.pixman_path
+        return self.config.pixman_path
+
+    @property
     def freetype_path(self) -> Path:
         assert self.config.freetype_path
         return self.config.freetype_path
+
+    @property
+    def cairo_path(self) -> Path:
+        assert self.config.cairo_path
+        return self.config.cairo_path
 
     @property
     def boost_bin_path(self) -> Path:
@@ -171,11 +201,30 @@ class NativeMaker:
     def get_version_for_nuget(self) -> str:
         return f"0.{self.get_rdkit_version()}.{self.config.minor_version}"
 
+    def get_version_for_rdkit(self) -> str:
+        num = self.get_rdkit_version()
+        return f"{num // 1000}_{('00' + str((num % 1000) // 10))[-2:]}_{num % 10}"
+
     def get_version_for_boost(self) -> str:
-        return re.sub(r".*(\d+_\d+_\d+)", r"\1", str(self.config.boost_path))
+        return re.sub(r".*(\d+_\d+_\d+)", r"\1", str(self.boost_path))
 
     def get_version_for_eigen(self) -> str:
-        return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(self.config.eigen_path))
+        return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(self.eigen_path))
+
+    def get_version_for_zlib(self) -> str:
+        return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(self.zlib_path))
+
+    def get_version_for_libpng(self) -> str:
+        return re.sub(r".*lpng(\d)(\d)(\d\d)", r"\1.\2.\3", str(self.libpng_path))
+
+    def get_version_for_freetype(self) -> str:
+        return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(self.freetype_path))
+
+    def get_version_for_pixman(self) -> str:
+        return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(self.pixman_path))
+
+    def get_version_for_cairo(self) -> str:
+        return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(self.cairo_path))
 
     def _get_cmake_rdkit_cmd_line(self) -> str:
         cmd = (
@@ -207,10 +256,12 @@ class NativeMaker:
             + "-DRDK_BUILD_MAEPARSER_SUPPORT=ON "
             + "-DRDK_OPTIMIZE_POPCNT=ON "
             + "-DRDK_BUILD_FREESASA_SUPPORT=OFF "
-            + "-DRDK_BUILD_CAIRO_SUPPORT=OFF "
             + "-DRDK_BUILD_THREADSAFE_SSS=ON "
             + "-DRDK_BUILD_INCHI_SUPPORT=ON "
             + "-DRDK_BUILD_AVALON_SUPPORT=ON "
+            + "-DRDK_BUILD_CAIRO_SUPPORT=ON "
+            + f'-DCAIRO_INCLUDE_DIRS={self.cairo_path / "src"} '
+            + f'-DCAIRO_LIBRARIES={self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.lib"} '
         )
 
         if self.get_rdkit_version() >= 2020091:
@@ -240,8 +291,7 @@ class NativeMaker:
         call_subprocess(cmd)
 
     def _build_rdkit_native(self) -> None:
-        cmd = f"MSBuild RDKit.sln /p:Configuration=Release,Platform={self.ms_build_platform} /maxcpucount"
-        call_subprocess(cmd)
+        self.run_msbuild("RDKit.sln")
 
     def _copy_to_csharp_wrapper(self) -> None:
         assert self.build_platform
@@ -250,45 +300,61 @@ class NativeMaker:
         dll_dest_path.mkdir()
         logging.info(f"Copy DLLs to {dll_dest_path}.")
 
+        files_to_copy: List[Union[str, PathLike]] = []
+
         # copy "RDKFuncs.dll"
-        shutil.copy2(
+        files_to_copy.append(
             self.rdkit_csharp_build_path
             / "Code"
             / "JavaWrappers"
             / "csharp_wrapper"
             / "Release"
-            / "RDKFuncs.dll",
-            dll_dest_path,
+            / "RDKFuncs.dll"
         )
-        # copy rdkit dlls
+
+        # copy rdkit dlls from 2020_09_1 submodules are separated
         if self.get_rdkit_version() >= 2020091:
             for filename in glob.glob(
                 str(self.rdkit_csharp_build_path / "bin" / "Release" / "*.dll")
             ):
-                shutil.copy2(filename, dll_dest_path)
+                files_to_copy.append(filename)
 
         # copy boost dlls
         for filename in glob.glob(
             str(self.boost_path / f"lib{self.address_model}-msvc-14.1" / "*.dll")
         ):
-            if re.match(
-                r".*\-vc141\-mt\-x(32|64)\-\d_\d\d\.dll", filename
-            ) and not os.path.basename(filename).startswith("boost_python"):
-                shutil.copy2(filename, dll_dest_path)
+            if re.match(r".*\-vc141\-mt\-x(32|64)\-\d_\d\d\.dll", filename):
+                if not os.path.basename(filename).startswith("boost_python"):
+                    files_to_copy.append(filename)
 
         # copy fonttype
-        if self.get_rdkit_version() >= 2020091:
-            assert self.freetype_path
-            for filename in glob.glob(
-                str(
-                    self.freetype_path
-                    / "objs"
-                    / self.ms_build_platform
-                    / "Release"
-                    / "*.dll"
-                )
-            ):
-                shutil.copy2(filename, dll_dest_path)
+        if self.config.cairo_support or self.get_rdkit_version() >= 2020091:
+            files_to_copy.append(
+                self.freetype_path
+                / "objs"
+                / self.ms_build_platform
+                / "Release"
+                / "freetype.dll"
+            )
+
+        if self.config.cairo_support:
+            files_to_copy += [
+                self.zlib_path / self.build_dir_name / "Release" / "zlib.dll",
+                self.libpng_path / self.build_dir_name / "Release" / "libpng16.dll",
+                self.pixman_path
+                / "vc2017"
+                / self.ms_build_platform
+                / "Release"
+                / "pixman.dll",
+                self.cairo_path
+                / "vc2017"
+                / self.ms_build_platform
+                / "Release"
+                / "cairo.dll",
+            ]
+
+        for path in files_to_copy:
+            shutil.copy2(path, dll_dest_path)
 
     def _patch_rdkit_swig_files(self) -> None:
         # Customize the followings if required.
@@ -337,8 +403,130 @@ class NativeMaker:
             self.rdkit_swig_csharp_path,
         )
 
+    def run_msbuild(
+        self, proj: Union[PathLike, str], platform: Optional[str] = None
+    ) -> None:
+        if not platform:
+            platform = self.ms_build_platform
+        cmd = (
+            f"MSBuild {proj} /p:Configuration=Release,Platform={platform} /maxcpucount"
+        )
+        call_subprocess(cmd)
+
+    def make_zlib(self) -> None:
+        build_path = self.zlib_path / self.build_dir_name
+        build_path.mkdir(exist_ok=True)
+        _curdir = os.path.abspath(os.curdir)
+        try:
+            os.chdir(build_path)
+            cmd = f'cmake {str(self.zlib_path)} -G"{self.g_option_of_cmake}" '
+            call_subprocess(cmd)
+            self.run_msbuild("zlib.sln")
+            shutil.copy2(build_path / "zconf.h", self.zlib_path)
+        finally:
+            os.chdir(_curdir)
+
+    def make_libpng(self) -> None:
+        build_path = self.libpng_path / self.build_dir_name
+        build_path.mkdir(exist_ok=True)
+        _curdir = os.path.abspath(os.curdir)
+        try:
+            os.chdir(build_path)
+            cmd = (
+                "cmake "
+                + f"{str(self.libpng_path)} "
+                + f'-G"{self.g_option_of_cmake}" '
+                + f'-DZLIB_LIBRARY="{str(self.zlib_path / self.build_dir_name / "Release" / "zlib.lib")}" '
+                + f'-DZLIB_INCLUDE_DIR="{str(self.zlib_path)}" '
+                + "-DPNG_SHARED=ON "
+                + "-DPNG_STATIC=OFF "
+            )
+            call_subprocess(cmd)
+            self.run_msbuild("libpng.sln")
+        finally:
+            os.chdir(_curdir)
+
+    def make_pixman(self) -> None:
+        _curdir = os.path.abspath(os.curdir)
+        try:
+            proj_dir = self.pixman_path / "vc2017"
+            proj_dir.mkdir(exist_ok=True)
+            os.chdir(proj_dir)
+            files_dir = self.this_path / "files" / "pixman"
+            vcxproj = "pixman.vcxproj"
+            shutil.copy2(files_dir / vcxproj, proj_dir)
+            proj_file = proj_dir / vcxproj
+            shutil.copy2(files_dir / "config.h", self.pixman_path / "pixman")
+            makefile_win32 = self.pixman_path / "pixman" / "Makefile.win32"
+            makefile_sources = self.pixman_path / "pixman" / "Makefile.sources"
+
+            class ClAdder:
+                def __init__(self, str_Cls: List[str], pattern: str):
+                    self.str_Cls: List[str] = str_Cls
+                    self.regex = re.compile(pattern)
+
+                def add_if_match(self, line: str) -> None:
+                    match = self.regex.match(line)
+                    if match:
+                        name = match[1]
+                        if name.endswith(".c"):
+                            self.str_Cls.append(
+                                f'<ClCompile Include="..\pixman\{name}" />\n'
+                            )
+                        elif name.endswith(".h"):
+                            self.str_Cls.append(
+                                f'<ClInclude Include="..\pixman\{name}" />\n'
+                            )
+
+            str_Cls: List[str] = []
+            adder = ClAdder(str_Cls, "^\\s+([A-Za-z0-9\-]+\\.(c|h))\\b.*$")
+            with open(makefile_sources, "r") as f:
+                for line in f.readlines():
+                    adder.add_if_match(line)
+            adder = ClAdder(
+                str_Cls,
+                "^\\s*libpixman_sources\\s*\\+\\=\\s*([A-Za-z0-9\-]+\\.(c|h))\\b.*$",
+            )
+            with open(makefile_win32, "r") as f:
+                for line in f.readlines():
+                    print(line)
+                    adder.add_if_match(line)
+            replace_file_string(
+                proj_file,
+                [("<PLACEHOLDER\\s*\/>", "".join(str_Cls).replace("\\", "\\\\"),)],
+            )
+            self.run_msbuild(vcxproj)
+        finally:
+            os.chdir(_curdir)
+
+    def make_cairo(self) -> None:
+        # TODO: get file names from src\Makefile.sources
+        _curdir = os.path.abspath(os.curdir)
+        try:
+            proj_dir = self.cairo_path / "vc2017"
+            proj_dir.mkdir(exist_ok=True)
+            os.chdir(proj_dir)
+            files_dir = self.this_path / "files" / "cairo"
+            vcxproj = "cairo.vcxproj"
+            shutil.copy2(files_dir / vcxproj, proj_dir)
+            proj_file = proj_dir / vcxproj
+            shutil.copy2(files_dir / "cairo-features.h", self.cairo_path / "src")
+            replace_file_string(
+                proj_file,
+                [
+                    ("__CAIRODIR__", str(self.cairo_path).replace("\\", "\\\\"),),
+                    ("__LIBPNGDIR__", str(self.libpng_path).replace("\\", "\\\\"),),
+                    ("__ZLIBDIR__", str(self.zlib_path).replace("\\", "\\\\"),),
+                    ("__PIXMANDIR__", str(self.pixman_path).replace("\\", "\\\\"),),
+                    ("__FREETYPEDIR__", str(self.freetype_path).replace("\\", "\\\\"),),
+                ],
+            )
+            self.run_msbuild(vcxproj)
+        finally:
+            os.chdir(_curdir)
+
     def make_freetype(self) -> None:
-        _curdir = os.curdir
+        _curdir = os.path.abspath(os.curdir)
         try:
             os.chdir(self.freetype_path)
             shutil.copy2(
@@ -347,20 +535,19 @@ class NativeMaker:
             )
             os.chdir(self.freetype_path / "builds" / "windows" / "vc2010")
             logging.debug(f"current dir = {os.getcwd()}")
-            cmd = f"MSBuild freetype.sln /p:Configuration=Release,Platform={self.ms_build_platform} /maxcpucount"
-            call_subprocess(cmd)
+            self.run_msbuild("freetype.sln")
         finally:
             os.chdir(_curdir)
 
     def build_rdkit(self) -> None:
         self.rdkit_csharp_build_path.mkdir(exist_ok=True)
-        _curdir = os.curdir
+        _curdir = os.path.abspath(os.curdir)
         os.chdir(self.rdkit_csharp_build_path)
         try:
             if self.config.swig_patch_enabled:
                 replace_file_string(
                     self.rdkit_csharp_wrapper_path / "GraphMolCSharp.i",
-                    [("boost::int32_t", "int32_t"), ("boost::uint32_t", "uint32_t")],
+                    [("boost::int32_t", "int32_t",), ("boost::uint32_t", "uint32_t",)],
                     make_backup=True,
                 )
             self._make_rdkit_cmake()
@@ -417,8 +604,7 @@ class NativeMaker:
         _pushd_build_wrapper = os.getcwd()
         try:
             os.chdir(self.rdkit_csharp_wrapper_path)
-            cmd = "MSBuild RDKit2DotNet.csproj /p:Configuration=Release,Platform=AnyCPU /maxcpucount"
-            call_subprocess(cmd)
+            self.run_msbuild("RDKit2DotNet.csproj", "AnyCPU")
         finally:
             os.chdir(_pushd_build_wrapper)
 
@@ -438,31 +624,29 @@ class NativeMaker:
             self.rdkit_csharp_wrapper_path,
         )
 
+        # RDKit Release_0000_00_0, Boost 0.0.0, FreeType 0.0.0, and Eigen 0.0.0
+        lib_versions: List[str] = [
+            f"Boost {self.get_version_for_boost()}",
+            f"Eigen {self.get_version_for_eigen()}",
+            f"FreeType {self.get_version_for_freetype()}",
+        ]
+        if self.config.cairo_support:
+            lib_versions += [
+                f"zlib {self.get_version_for_zlib()}",
+                f"libpng {self.get_version_for_libpng()}",
+                f"pixman {self.get_version_for_pixman()}",
+                f"cairo {self.get_version_for_cairo()}",
+            ]
         replace_file_string(
             nuspec_file,
             [
                 (
                     "\\<version\\>[0-9\\.]*\\<\\/version\\>",
                     f"<version>{self.get_version_for_nuget()}</version>",
-                )
+                ),
+                ("__RDKITVERSION__", f"{self.get_version_for_rdkit()}",),
+                ("__LIBVERSIONS__", ", ".join(lib_versions),),
             ],
-        )
-        replace_file_string(
-            nuspec_file,
-            [
-                (
-                    "RDKit Release_\\d\\d\\d\\d\\_\\d\\d\\_\\d",
-                    f"RDKit Release_{self.get_version_for_nuget().replace('.', '_')}",
-                )
-            ],
-        )
-        replace_file_string(
-            nuspec_file,
-            [("Boost \\d+\\.\\d+\\.\\d+", f"Boost {self.get_version_for_boost()}")],
-        )
-        replace_file_string(
-            nuspec_file,
-            [("Eigen \\d+\\.\\d+\\.\\d+", f"Eigen {self.get_version_for_eigen()}")],
         )
 
         nuspec_dlls_spec = []
@@ -526,52 +710,61 @@ class NativeMaker:
 
     def clean(self):
         if self.config.rdkit_path:
-            for p in ("RDKit.DotNetWrap.nuspec", "RDKit.DotNetWrap.targets",):
-                    remove_if_exist(self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper" / p)
+            rdkit_path_csharp_wrapper = (
+                self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper"
+            )
+            for p in (
+                "RDKit.DotNetWrap.nuspec",
+                "RDKit.DotNetWrap.targets",
+            ):
+                remove_if_exist(rdkit_path_csharp_wrapper / p)
             remove_if_exist(self.rdkit_path / "lib")
             for p in cpu_models:
-                remove_if_exist(self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper" / p)
+                remove_if_exist(rdkit_path_csharp_wrapper / p)
                 remove_if_exist(self.rdkit_path / f"build{p}CSharp")
         if self.config.freetype_path:
             for p in cpu_models:
                 remove_if_exist(self.freetype_path / "objs" / _platform_to_ms_form[p])
+        if self.config.zlib_path:
+            for p in cpu_models:
+                remove_if_exist(self.zlib_path / "zconf.h")
+                remove_if_exist(self.zlib_path / f"build{_platform_to_ms_form[p]}")
+        if self.config.libpng_path:
+            for p in cpu_models:
+                remove_if_exist(self.libpng_path / f"build{_platform_to_ms_form[p]}")
+        if self.config.pixman_path:
+            remove_if_exist(self.pixman_path / f"vc2017")
+        if self.config.cairo_path:
+            remove_if_exist(self.cairo_path / f"vc2017")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--build_platform", choices=("x86", "x64", "all"),
-    )
-    parser.add_argument(
-        "--disable_swig_patch", default=False, action="store_true",
-    )
-    parser.add_argument(
-        "--build_freetype", default=False, action="store_true",
-    )
-    parser.add_argument(
-        "--build_rdkit", default=False, action="store_true",
-    )
-    parser.add_argument(
-        "--build_wrapper", default=False, action="store_true",
-    )
-    parser.add_argument(
-        "--build_nuget", default=False, action="store_true",
-    )
-    parser.add_argument(
-        "--rdkit_dir", type=str,
-    )
-    parser.add_argument(
-        "--boost_dir", type=str,
-    )
-    parser.add_argument(
-        "--eigen_dir", type=str,
-    )
-    parser.add_argument(
-        "--freetype_dir", type=str,
-    )
-    parser.add_argument(
-        "--clean", default=False, action="store_true",
-    )
+    parser.add_argument("--build_platform", choices=("x86", "x64", "all"))
+    parser.add_argument("--disable_swig_patch", default=False, action="store_true")
+    for opt in (
+        "build_zlib",
+        "build_libpng",
+        "build_pixman",
+        "build_freetype",
+        "build_cairo",
+        "build_rdkit",
+        "build_wrapper",
+        "build_nuget",
+    ):
+        parser.add_argument(f"--{opt}", default=False, action="store_true")
+    for opt in (
+        "rdkit",
+        "boost",
+        "eigen",
+        "zlib",
+        "freetype",
+        "libpng",
+        "pixman",
+        "cairo",
+    ):
+        parser.add_argument(f"--{opt}_dir", type=str)
+    parser.add_argument("--clean", default=False, action="store_true")
     args = parser.parse_args()
 
     def get_value_from_env(env: str, default: Optional[str] = None) -> Optional[str]:
@@ -586,15 +779,20 @@ def main() -> None:
         return Path(value) if value else None
 
     config = Config(
+        minor_version=cast(int, get_value_from_env("MINOR_VERSION", "1")),
         swig_patch_enabled=not args.disable_swig_patch,
         this_path=here,
-        rdkit_path=path_from_arg_or_env(args.rdkit_dir, "RDKITDIR"),
-        boost_path=path_from_arg_or_env(args.boost_dir, "BOOSTDIR"),
-        eigen_path=path_from_arg_or_env(args.eigen_dir, "EIGENDIR"),
+        rdkit_path=path_from_arg_or_env(args.rdkit_dir, "RDKIT_DIR"),
+        boost_path=path_from_arg_or_env(args.boost_dir, "BOOST_DIR"),
+        eigen_path=path_from_arg_or_env(args.eigen_dir, "EIGEN_DIR"),
+        zlib_path=path_from_arg_or_env(args.zlib_dir, "ZLIB_DIR"),
+        libpng_path=path_from_arg_or_env(args.libpng_dir, "LIBPNG_DIR"),
+        pixman_path=path_from_arg_or_env(args.pixman_dir, "PIXMAN_DIR"),
+        freetype_path=path_from_arg_or_env(args.freetype_dir, "FREETYPE_DIR"),
+        cairo_path=path_from_arg_or_env(args.cairo_dir, "CAIRO_DIR"),
         swig_path=path_from_arg_or_env(None, "SWIG_DIR"),
-        freetype_path=path_from_arg_or_env(args.freetype_dir, "FREETYPEDIR"),
         number_of_processors=cast(int, get_value_from_env("NUMBER_OF_PROCESSORS", "1")),
-        minor_version=cast(int, get_value_from_env("MINORVERSION", "1")),
+        cairo_support=True,
     )
 
     curr_dir = os.getcwd()
@@ -607,6 +805,14 @@ def main() -> None:
             maker = NativeMaker(config, platform)
             if args.build_freetype:
                 maker.make_freetype()
+            if args.build_zlib:
+                maker.make_zlib()
+            if args.build_libpng:
+                maker.make_libpng()
+            if args.build_pixman:
+                maker.make_pixman()
+            if args.build_cairo:
+                maker.make_cairo()
             if args.build_rdkit:
                 maker.build_rdkit()
         maker = NativeMaker(config)

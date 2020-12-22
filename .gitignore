@@ -6,6 +6,11 @@
 /zlib-*/
 /swigwin-*/
 /freetype-*/
+/cairo-*/
+/lpng*/
+/pixman-*/
+/libpng/
+
 
 # Build directory
 

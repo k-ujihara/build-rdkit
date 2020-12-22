@@ -9,10 +9,14 @@
   - [RDKit Release_2020.09.3](https://github.com/rdkit/rdkit/releases/tag/Release_2020_09_3) and [RDKit Release_2019.09.1](https://github.com/rdkit/rdkit/releases/tag/Release_2019_09_1)
   - [Boost 1.74.0](https://sourceforge.net/projects/boost/files/boost-binaries/1.74.0/)
   - [Eigen 3.3.8](https://gitlab.com/libeigen/eigen/-/releases/3.3.8)
-  - [Python](https://www.python.org/) 3.8.3
-  - [CMAKE](https://cmake.org/) 3.12.18081601-MSVC_2
-  - [SWIG](http://www.swig.org/) 4.0.2
-  - [NuGet](https://nuget.org) 5.3.1
+  - [Cairo 1.16.0](https://www.cairographics.org/releases/cairo-1.16.0.tar.xz)
+  - [libpng 1.6.37](https://sourceforge.net/projects/libpng/files/libpng16/1.6.37/libpng-1.6.37.tar.xz)
+  - [pixman 0.40.0](https://www.cairographics.org/releases/pixman-0.40.0.tar.gz)
+  - [zlib 1.2.11](https://zlib.net/zlib1211.zip)
+  - [Python 3.8.3](https://www.python.org/)
+  - [CMAKE 3.12.18081601-MSVC_2](https://cmake.org/)
+  - [SWIG 4.0.2](http://www.swig.org/)
+  - [NuGet 5.3.1](https://nuget.org)
   - Visual Studio 2017
 
 ## How to Build
@@ -24,9 +28,15 @@
 - Install Python into _default folder_ enabling pip using offical installer.
 - Clone this repository to some directory. A short name is highly recommended for the directory.
 - Download the following source archives and extract them here.
-  - [RDKit](hhttps://github.com/rdkit/rdkit/) to `rdkit-Release_####_##_#`  
-  - [Eigen3](http://eigen.tuxfamily.org/) to `eigen-#.#.#`
-  - [SWIG](http://www.swig.org/) to `swigwin-#.#.#`
+  - [RDKit](hhttps://github.com/rdkit/rdkit/) to `rdkit-Release_####_##_#`.
+  - [Eigen3](http://eigen.tuxfamily.org/) to `eigen-#.#.#`.
+  - [SWIG](http://www.swig.org/) to `swigwin-#.#.#`.
+  - [cairo](https://www.cairographics.org/) to `cairo-#.##.#`.
+  - [pixman](https://www.cairographics.org/) to `pixman-#.##.#`.
+  - [zlib](https://zlib.net/) to `zlib-#.#.##`.
+  - [libpng 1.6](http://www.libpng.org/pub/png/libpng.html) to `lpng16##`.
+  - [FreeType](https://www.freetype.org/) to `freetype-#.##.#`.
+
 - Download binery archives of both 32-bit and 64-bit versions of Boost for Visual Studio 2017, ie, msvc-14.1.
   - [https://sourceforge.net/projects/boost/files/boost-binaries/](https://sourceforge.net/projects/boost/files/boost-binaries/).
   - Execute EXE files to extract. Defaults to store to `C:\local`.
@@ -46,8 +56,12 @@
 
 - Open 'Developer Command Prompt for VS 2017'.
 - Execute `custom-dir.bat` to set up environment variables.
-- Execute `python .\build-rdkit-csharp.py --build_freetype --build_platform all` to make freetype.
-- Execute `python .\build-rdkit-csharp.py --build_rdkit --build_platform all` to patch rdkit and make it.
-- Execute `python .\build-rdkit-csharp.py --build_wrapper` to make rdkit .NET wrapper and patch it.
+- Execute `python .\build_rdkit_csharp.py --build_freetype --build_platform all` to make FreeType.
+- Execute `python .\build_rdkit_csharp.py --build_zlib --build_platform all` to make zlib.
+- Execute `python .\build_rdkit_csharp.py --build_libpng --build_platform all` to make libpng.
+- Execute `python .\build_rdkit_csharp.py --build_pixman --build_platform all` to make pixman.
+- Execute `python .\build_rdkit_csharp.py --build_cairo --build_platform all` to make cairo.
+- Execute `python .\build_rdkit_csharp.py --build_rdkit --build_platform all` to patch RDKit and make it.
+- Execute `python .\build_rdkit_csharp.py --build_wrapper` to make rdkit .NET wrapper and patch it.
 - C&#35; project file is created in `(RDKit-directory)/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet.csproj`.
-- Execute `python .\build-rdkit-csharp.py --build_nuget` to make nuget package.
+- Execute `python .\build_rdkit_csharp.py --build_nuget` to make NuGet package.
