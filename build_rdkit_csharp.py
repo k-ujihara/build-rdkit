@@ -13,9 +13,22 @@ import re
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from os import PathLike
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, NamedTuple, Optional, Sequence, Union, cast
+from typing import (
+    Any,
+    Dict,
+    List,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    cast,
+)
+from xml.etree.ElementTree import SubElement
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -49,20 +62,47 @@ def get_value(dic: Mapping[str, str], key: Optional[str]) -> str:
     return dic[key]
 
 
-def replace_file_string(filename, pattern_replace, make_backup: bool = False):
+def make_or_restore_bak(filename: PathLike) -> None:
     bak_filename = f"{filename}.bak"
     if os.path.exists(bak_filename):
         shutil.copy(bak_filename, filename)
+    else:
+        shutil.copy(filename, bak_filename)
+
+
+def replace_file_string(
+    filename: PathLike,
+    pattern_replace: Sequence[Tuple[str, str]],
+    make_backup: bool = False,
+):
+    if make_backup:
+        make_or_restore_bak(filename)
+    filedata: str
     with open(filename, "r", encoding="utf-8") as file:
         filedata = file.read()
         for pattern, replace in pattern_replace:
             filedata = re.sub(
                 pattern, replace, filedata, flags=re.MULTILINE | re.DOTALL
             )
-    if make_backup:
-        shutil.copy(filename, bak_filename)
     with open(filename, "w", encoding="utf-8") as file:
         file.write(filedata)
+
+
+def insert_line_after(
+    filename: PathLike, insert_after: Mapping[str, str], make_backup: bool = False,
+):
+    if make_backup:
+        make_or_restore_bak(filename)
+    new_lines: List[str] = []
+    with open(filename, "r", encoding="utf-8") as file:
+        for line in file.readlines():
+            if line[-1] == "\n":
+                line = line[:-1]
+            new_lines.append(line)
+            if line in insert_after:
+                new_lines.append(insert_after[line])
+    with open(filename, "w", encoding="utf-8") as file:
+        file.write("\n".join(new_lines) + "\n")
 
 
 def call_subprocess(cmd: str) -> None:
@@ -550,6 +590,15 @@ class NativeMaker:
                     [("boost::int32_t", "int32_t",), ("boost::uint32_t", "uint32_t",)],
                     make_backup=True,
                 )
+            if self.config.cairo_support:
+                insert_line_after(
+                    self.rdkit_path / "Code" / "JavaWrappers" / "MolDraw2D.i",
+                    {
+                        r"#include <GraphMol/MolDraw2D/MolDraw2DSVG.h>": r"#include <GraphMol/MolDraw2D/MolDraw2DCairo.h>",
+                        r"%include <GraphMol/MolDraw2D/MolDraw2DSVG.h>": r"%include <GraphMol/MolDraw2D/MolDraw2DCairo.h>",
+                    },
+                    make_backup=True,
+                )
             self._make_rdkit_cmake()
             self._build_rdkit_native()
             self._copy_to_csharp_wrapper()
@@ -561,29 +610,47 @@ class NativeMaker:
         path_RDKit2DotNet_csproj = (
             self.rdkit_csharp_wrapper_path / "RDKit2DotNet.csproj"
         )
-
-        contents_replaced = ""
+        make_or_restore_bak(path_RDKit2DotNet_csproj)
+        ns = {"msbuild": "http://schemas.microsoft.com/developer/msbuild/2003"}
+        ET.register_namespace("", ns["msbuild"])
+        tree = ET.parse(path_RDKit2DotNet_csproj)
+        XPATH_CONTENT_RDFUNC_DLL = "msbuild:Content[@Include='RDKFuncs.dll']"
+        item_group = tree.find(f"./msbuild:ItemGroup/{XPATH_CONTENT_RDFUNC_DLL}/..", ns)
+        if not item_group:
+            raise ValueError(
+                f"<Content Include='RDKFuncs.dll' /> is not found in {path_RDKit2DotNet_csproj}."
+            )
+        content = item_group.find(XPATH_CONTENT_RDFUNC_DLL, ns)
+        assert content
+        item_group.remove(content)
         for cpu_model in cpu_models:
             for filename in glob.glob(
                 str(self.rdkit_csharp_wrapper_path / cpu_model / "*.dll")
             ):
                 basename = os.path.basename(filename)
-                contents_replaced += f'<Content Include="{cpu_model}\\\\{basename}"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>\n'
-        replace_file_string(
-            path_RDKit2DotNet_csproj,
-            [
-                (
-                    r"\<Content Include\=\"RDKFuncs\.dll\"\>.*\<\/Content\>",
-                    contents_replaced,
-                )
-            ],
-            make_backup=True,
+                content = SubElement(item_group, "Content")
+                content.attrib["Include"] = f"{cpu_model}\\\\{basename}"
+                copy_to_output_directory = SubElement(content, "CopyToOutputDirectory")
+                copy_to_output_directory.text = "PreserveNewest"
+
+        project = tree.getroot()
+        property_group = SubElement(project, "PropertyGroup")
+        sign_assembly = SubElement(property_group, "SignAssembly")
+        sign_assembly.text = "true"
+        assembly_originator_key_file = SubElement(
+            property_group, "AssemblyOriginatorKeyFile"
         )
+        assembly_originator_key_file.text = "rdkit2dotnet.snk"
+        tree.write(path_RDKit2DotNet_csproj, "utf-8", True)
 
         for src, dst in (
             (
                 self.this_path / "csharp_wrapper" / "RDKitCSharpTest.csproj",
                 self.rdkit_csharp_wrapper_path / "RDKitCSharpTest",
+            ),
+            (
+                self.this_path / "csharp_wrapper" / "rdkit2dotnet.snk",
+                self.rdkit_csharp_wrapper_path,
             ),
             (
                 self.this_path / "csharp_wrapper" / "RDKit2DotNet.sln",
@@ -595,11 +662,6 @@ class NativeMaker:
         print(
             f"Solution file '{self.rdkit_csharp_wrapper_path / 'RDKit2DotNet.sln'}' is created."
         )
-        # if required modifiy followings.
-        # - Remove duplicated methods.
-        # - Rename miss named SWIGTYPE classes.
-        # - Add version infomation.
-        # - Sign."
 
         _pushd_build_wrapper = os.getcwd()
         try:

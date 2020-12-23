@@ -1,7 +1,7 @@
-﻿using GraphMolWrap;
-using System;
-using System.IO;
+﻿using System;
 using System.Text;
+using GraphMolWrap;
+using System.IO;
 
 namespace RDKitCSharpTest
 {
@@ -107,21 +107,36 @@ namespace RDKitCSharpTest
             if (mol == null)
                 throw new Exception($"Cannot recognize: '{smiles}'");
 
-            MolDraw2DSVG view = new MolDraw2DSVG(width, height);
             RDKFuncs.prepareMolForDrawing(mol);
-            view.drawMolecule(mol);
-            view.finishDrawing();
-
-            using (var w = new StreamWriter(filename))
+            if (filename.EndsWith(".svg"))
             {
-                w.Write(view.getDrawingText());
-                Console.WriteLine($"{filename} is drawn.");
+                var view = new MolDraw2DSVG(width, height);
+                view.drawMolecule(mol);
+                view.finishDrawing();
+                using (var w = new StreamWriter(filename))
+                {
+                    w.Write(view.getDrawingText());
+                    Console.WriteLine($"{filename} is drawn.");
+                }
+            }
+            else if (filename.EndsWith(".png"))
+            {
+                var view = new MolDraw2DCairo(width, height);
+                view.drawMolecule(mol);
+                view.finishDrawing();
+                view.writeDrawingText(filename);
+            }
+            else
+            {
+                throw new Exception($"Not supported: {filename}");
             }
         }
 
         static void MakePictures()
         {
+            MakePicture("c1ccccc1", "benzene.png");
             MakePicture("c1ccccc1", "benzene.svg");
+            MakePicture("Clc1cccc(N2CCN(CCC3CCC(CC3)NC(=O)c3cccs3)CC2)c1Cl", "mol.png");
             MakePicture("Clc1cccc(N2CCN(CCC3CCC(CC3)NC(=O)c3cccs3)CC2)c1Cl", "mol.svg");
         }
 
