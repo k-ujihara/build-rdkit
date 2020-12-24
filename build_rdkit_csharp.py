@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import (
     Any,
     Dict,
+    Iterable,
     List,
     Mapping,
     NamedTuple,
@@ -127,6 +128,28 @@ def remove_if_exist(path: Path):
             path.unlink()
         elif path.is_dir():
             shutil.rmtree(path)
+
+
+def makefile_to_lines(filename: PathLike) -> Iterable[str]:
+    lines: List[str] = []
+    with open(filename, "r") as f:
+        for line in f.readlines():
+            if line.endswith("\n"):
+                line = line[:-1]
+            if line.endswith("\\"):
+                lines.append(line[:-1])
+            else:
+                lines.append(line)
+                yield re.sub("[ \\t]+", " ", "".join(lines))
+                lines = []
+
+
+def match_and_add(pattern: re.Pattern, dest: List[str], line: str) -> None:
+    match = pattern.match(line)
+    if match:
+        for name in [s.strip() for s in match["name"].split(" ")]:
+            if name and name != "$(NULL)":
+                dest.append(name)
 
 
 class Config(NamedTuple):
@@ -504,42 +527,33 @@ class NativeMaker:
             makefile_win32 = self.pixman_path / "pixman" / "Makefile.win32"
             makefile_sources = self.pixman_path / "pixman" / "Makefile.sources"
 
-            class ClAdder:
-                def __init__(self, str_Cls: List[str], pattern: str):
-                    self.str_Cls: List[str] = str_Cls
-                    self.regex = re.compile(pattern)
+            c_files: List[str] = []
+            i_files: List[str] = []
 
-                def add_if_match(self, line: str) -> None:
-                    match = self.regex.match(line)
-                    if match:
-                        name = match[1]
-                        if name.endswith(".c"):
-                            self.str_Cls.append(
-                                f'<ClCompile Include="..\pixman\{name}" />\n'
-                            )
-                        elif name.endswith(".h"):
-                            self.str_Cls.append(
-                                f'<ClInclude Include="..\pixman\{name}" />\n'
-                            )
+            pattern_c = re.compile("^libpixman_sources\\s*\\=(?P<name>.*)$")
+            pattern_h = re.compile("^libpixman_headers\\s*\\=(?P<name>.*)$")
+            for line in makefile_to_lines(makefile_sources):
+                match_and_add(pattern_c, c_files, line)
+                match_and_add(pattern_h, i_files, line)
 
-            str_Cls: List[str] = []
-            adder = ClAdder(str_Cls, "^\\s+([A-Za-z0-9\-]+\\.(c|h))\\b.*$")
-            with open(makefile_sources, "r") as f:
-                for line in f.readlines():
-                    adder.add_if_match(line)
-            adder = ClAdder(
-                str_Cls,
-                "^\\s*libpixman_sources\\s*\\+\\=\\s*([A-Za-z0-9\-]+\\.(c|h))\\b.*$",
-            )
-            with open(makefile_win32, "r") as f:
-                for line in f.readlines():
-                    print(line)
-                    adder.add_if_match(line)
-            replace_file_string(
-                proj_file,
-                [("<PLACEHOLDER\\s*\/>", "".join(str_Cls).replace("\\", "\\\\"),)],
-            )
-            self.run_msbuild(vcxproj)
+            pattern_c = re.compile("^\\s*libpixman_sources\\s*\\+\\=(?P<name>.*)$")
+            for line in makefile_to_lines(makefile_win32):
+                match_and_add(pattern_c, c_files, line)
+
+            ns = {"msbuild": "http://schemas.microsoft.com/developer/msbuild/2003"}
+            ET.register_namespace("", ns["msbuild"])
+            tree = ET.parse(proj_file)
+            root = tree.getroot()
+            item_group = SubElement(root, "ItemGroup")
+            for name in c_files:
+                node = SubElement(item_group, "ClCompile")
+                node.attrib["Include"] = f"..\\pixman\\{name}"
+            for name in i_files:
+                node = SubElement(item_group, "ClInclude")
+                node.attrib["Include"] = f"..\\pixman\\{name}"
+
+            tree.write(proj_file, "utf-8", True)
+            self.run_msbuild(proj_file)
         finally:
             os.chdir(_curdir)
 
@@ -866,7 +880,9 @@ def main() -> None:
         if args.clean:
             NativeMaker(config).clean()
         for platform in (
-            cpu_models if args.build_platform == "all" else (args.build_platform,)
+            cpu_models
+            if not args.build_platform or args.build_platform == "all"
+            else (args.build_platform,)
         ):
             maker = NativeMaker(config, platform)
             if args.build_freetype:
