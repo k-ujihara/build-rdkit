@@ -65,9 +65,9 @@ def get_value(dic: Mapping[str, str], key: Optional[str]) -> str:
 def make_or_restore_bak(filename: PathLike) -> None:
     bak_filename = f"{filename}.bak"
     if os.path.exists(bak_filename):
-        shutil.copy(bak_filename, filename)
+        shutil.copy2(bak_filename, filename)
     else:
-        shutil.copy(filename, bak_filename)
+        shutil.copy2(filename, bak_filename)
 
 
 def replace_file_string(
@@ -113,6 +113,7 @@ def call_subprocess(cmd: str) -> None:
             "CL": "/source-charset:utf-8 /execution-charset:utf-8"
         }
         _env.update(_CL_env_for_MSVC)
+        logging.info(os.path.abspath(os.curdir))
         logging.info(cmd)
         subprocess.check_call(cmd, env=_env)
     except subprocess.CalledProcessError as e:
@@ -333,7 +334,7 @@ class NativeMaker:
     def _build_rdkit_native(self) -> None:
         self.run_msbuild("RDKit.sln")
 
-    def _copy_to_csharp_wrapper(self) -> None:
+    def _copy_dlls(self) -> None:
         assert self.build_platform
         dll_dest_path = self.rdkit_csharp_wrapper_path / self.build_platform
         remove_if_exist(dll_dest_path)
@@ -342,7 +343,7 @@ class NativeMaker:
 
         files_to_copy: List[Union[str, PathLike]] = []
 
-        # copy "RDKFuncs.dll"
+        # "RDKFuncs.dll".
         files_to_copy.append(
             self.rdkit_csharp_build_path
             / "Code"
@@ -352,22 +353,23 @@ class NativeMaker:
             / "RDKFuncs.dll"
         )
 
-        # copy rdkit dlls from 2020_09_1 submodules are separated
+        # DLLs of rdkit. Since 2020_09_1 submodules are separated.
         if self.get_rdkit_version() >= 2020091:
             for filename in glob.glob(
                 str(self.rdkit_csharp_build_path / "bin" / "Release" / "*.dll")
             ):
                 files_to_copy.append(filename)
 
-        # copy boost dlls
+        # DLLs of boost.
         for filename in glob.glob(
             str(self.boost_path / f"lib{self.address_model}-msvc-14.1" / "*.dll")
         ):
             if re.match(r".*\-vc141\-mt\-x(32|64)\-\d_\d\d\.dll", filename):
+                # boost_python-vc###-mt-x##-#_##.dll is not needed.
                 if not os.path.basename(filename).startswith("boost_python"):
                     files_to_copy.append(filename)
 
-        # copy fonttype
+        # DLLs of fonttype.
         if self.config.cairo_support or self.get_rdkit_version() >= 2020091:
             files_to_copy.append(
                 self.freetype_path
@@ -377,6 +379,7 @@ class NativeMaker:
                 / "freetype.dll"
             )
 
+        # DLLs of cairo.
         if self.config.cairo_support:
             files_to_copy += [
                 self.zlib_path / self.build_dir_name / "Release" / "zlib.dll",
@@ -393,6 +396,7 @@ class NativeMaker:
                 / "cairo.dll",
             ]
 
+        # Copy files.
         for path in files_to_copy:
             shutil.copy2(path, dll_dest_path)
 
@@ -439,7 +443,7 @@ class NativeMaker:
         ):
             replace_file_string(filepath, patterns)
         shutil.copy2(
-            self.this_path / "csharp_wrapper" / "RDKFuncsPINVOKE_Loader.cs",
+            self.this_path / "files" / "rdkit" / "RDKFuncsPINVOKE_Loader.cs",
             self.rdkit_swig_csharp_path,
         )
 
@@ -570,7 +574,7 @@ class NativeMaker:
         try:
             os.chdir(self.freetype_path)
             shutil.copy2(
-                self.this_path / "files" / "freetype.vcxproj",
+                self.this_path / "files" / "freetype" / "freetype.vcxproj",
                 self.freetype_path / "builds" / "windows" / "vc2010",
             )
             os.chdir(self.freetype_path / "builds" / "windows" / "vc2010")
@@ -601,7 +605,7 @@ class NativeMaker:
                 )
             self._make_rdkit_cmake()
             self._build_rdkit_native()
-            self._copy_to_csharp_wrapper()
+            self._copy_dlls()
         finally:
             os.chdir(_curdir)
 
@@ -645,15 +649,15 @@ class NativeMaker:
 
         for src, dst in (
             (
-                self.this_path / "csharp_wrapper" / "RDKitCSharpTest.csproj",
+                self.this_path / "files" / "rdkit" / "RDKitCSharpTest.csproj",
                 self.rdkit_csharp_wrapper_path / "RDKitCSharpTest",
             ),
             (
-                self.this_path / "csharp_wrapper" / "rdkit2dotnet.snk",
+                self.this_path / "files" / "rdkit" / "rdkit2dotnet.snk",
                 self.rdkit_csharp_wrapper_path,
             ),
             (
-                self.this_path / "csharp_wrapper" / "RDKit2DotNet.sln",
+                self.this_path / "files" / "rdkit" / "RDKit2DotNet.sln",
                 self.rdkit_csharp_wrapper_path,
             ),
         ):
@@ -681,8 +685,8 @@ class NativeMaker:
 
         # Prepare RDKit2DotNet.nuspec
 
-        nuspec_file = shutil.copy(
-            self.this_path / "csharp_wrapper" / f"{project_name}.nuspec",
+        nuspec_file = shutil.copy2(
+            self.this_path / "files" / "rdkit" / f"{project_name}.nuspec",
             self.rdkit_csharp_wrapper_path,
         )
 
@@ -722,8 +726,8 @@ class NativeMaker:
             nuspec_file, [("\\<nativefiles\\s*\\/\\>", "".join(nuspec_dlls_spec))]
         )
 
-        targets_file = shutil.copy(
-            self.this_path / "csharp_wrapper" / f"{project_name}.targets",
+        targets_file = shutil.copy2(
+            self.this_path / "files" / "rdkit" / f"{project_name}.targets",
             self.rdkit_csharp_wrapper_path,
         )
         targets_dlls_spec: List[str] = []
@@ -776,8 +780,8 @@ class NativeMaker:
                 self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper"
             )
             for p in (
-                "RDKit.DotNetWrap.nuspec",
-                "RDKit.DotNetWrap.targets",
+                f"{project_name}.nuspec",
+                f"{project_name}.targets",
             ):
                 remove_if_exist(rdkit_path_csharp_wrapper / p)
             remove_if_exist(self.rdkit_path / "lib")
