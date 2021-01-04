@@ -122,7 +122,7 @@ namespace RDKitCSharpTest
             else if (filename.EndsWith(".png"))
             {
                 var view = new MolDraw2DCairo(width, height);
-                view.drawMolecule(mol);
+                view.drawMolecule(mol, Path.GetFileNameWithoutExtension(filename));
                 view.finishDrawing();
                 view.writeDrawingText(filename);
             }
