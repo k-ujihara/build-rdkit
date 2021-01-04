@@ -25,8 +25,8 @@
 
 - Use Windows 10 (x64).
 - Install Visual Studio 2017 enabling C++, C&#35; and CMAKE.
-- Install Python into _default folder_ enabling pip using offical installer.
-- Clone this repository to some directory. A short name is highly recommended for the directory.
+- Install Python.
+- Clone this repository to some directory. A name of the directory including path should be short. It is highly recommended to place it under 'C:\' folder.
 - Download the following source archives and extract them here.
   - [RDKit](hhttps://github.com/rdkit/rdkit/) to `rdkit-Release_####_##_#`.
   - [Eigen3](http://eigen.tuxfamily.org/) to `eigen-#.#.#`.
@@ -63,5 +63,5 @@
 - Execute `python .\build_rdkit_csharp.py --build_cairo --build_platform all` to make cairo.
 - Execute `python .\build_rdkit_csharp.py --build_rdkit --build_platform all` to patch RDKit and make it.
 - Execute `python .\build_rdkit_csharp.py --build_wrapper` to make rdkit .NET wrapper and patch it.
-- C&#35; project file is created in `(RDKit-directory)/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet.csproj`.
+- C&#35; project file is created in `rdkit-Release_####_##_#/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet.csproj`.
 - Execute `python .\build_rdkit_csharp.py --build_nuget` to make NuGet package.
