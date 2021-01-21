@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import typing
 import xml.etree.ElementTree as ET
 from os import PathLike
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Literal,
     Mapping,
     NamedTuple,
     Optional,
@@ -34,23 +36,28 @@ logging.basicConfig(level=logging.DEBUG)
 
 project_name: str = "RDKit.DotNetWrap"
 
+VisualStudioVersion = Literal["15.0", "16.0"]
+CpuModel = Literal["x86", "x64"]
+MSPlatform = Literal["Win32", "x64"]
+AddressModel = Literal[32, 64]
+MSVCInternalVersion = Literal["14.1", "14.2"]
 
 here = Path(__file__).parent.resolve()
-cpu_models: Sequence[str] = (
-    "x86",
-    "x64",
-)
-_platform_to_g_option_catalog: Mapping[str, str] = {
-    "x86": "Visual Studio 15 2017",
-    "x64": "Visual Studio 15 2017 Win64",
+_vs_ver_to_cmake_option_catalog: Mapping[VisualStudioVersion, Mapping[CpuModel, str]] = {
+    "15.0": {"x86": '-G"Visual Studio 15 2017"', "x64": '-G"Visual Studio 15 2017 Win64"',},
+    "16.0": {"x86": '-G"Visual Studio 16 2019" -AWin32', "x64": '-G"Visual Studio 16 2019"',},
 }
-_platform_to_ms_form: Mapping[str, str] = {
+_platform_to_ms_form: Mapping[CpuModel, MSPlatform] = {
     "x86": "Win32",
     "x64": "x64",
 }
-_platform_to_address_model: Mapping[str, str] = {
-    "x86": "32",
-    "x64": "64",
+_platform_to_address_model: Mapping[CpuModel, AddressModel] = {
+    "x86": 32,
+    "x64": 64,
+}
+_vs_to_msvc_internal_ver: Mapping[VisualStudioVersion, MSVCInternalVersion] = {
+    "15.0": "14.1",
+    "16.0": "14.2",
 }
 
 
@@ -147,6 +154,26 @@ def match_and_add(pattern: re.Pattern, dest: List[str], line: str) -> None:
                 dest.append(name)
 
 
+def get_value_from_env(env: str, default: Optional[str] = None) -> Optional[str]:
+    if env not in os.environ:
+        return default
+    return os.environ[env]
+
+
+def get_vs_ver() -> VisualStudioVersion:
+    env_name = "VisualStudioVersion"
+    vs_version = get_value_from_env(env_name)
+    if not vs_version:
+        raise ValueError(f"{env_name} is empty.")
+    if vs_version not in typing.get_args(VisualStudioVersion):
+        raise ValueError(f"Unknown Visual Studio version: {vs_version}.")
+    return cast(VisualStudioVersion, vs_version)
+
+
+def get_msvc_internal_ver() -> MSVCInternalVersion:
+    return _vs_to_msvc_internal_ver[get_vs_ver()]
+
+
 class Config(NamedTuple):
     this_path: Optional[Path] = None
     rdkit_path: Optional[Path] = None
@@ -165,13 +192,14 @@ class Config(NamedTuple):
 
 
 class NativeMaker:
-    def __init__(self, config: Config, build_platform: Optional[str] = None):
-        self.build_platform: Optional[str] = build_platform
+    def __init__(self, config: Config, build_platform: Optional[CpuModel] = None):
+        self.build_platform: Optional[CpuModel] = build_platform
         self.config = config
 
     @property
     def g_option_of_cmake(self) -> str:
-        return get_value(_platform_to_g_option_catalog, self.build_platform)
+        assert self.build_platform
+        return _vs_ver_to_cmake_option_catalog[get_vs_ver()][self.build_platform]
 
     @property
     def build_dir_name(self) -> str:
@@ -184,12 +212,14 @@ class NativeMaker:
         return f"build{self.build_platform}CSharp"
 
     @property
-    def ms_build_platform(self) -> str:
-        return get_value(_platform_to_ms_form, self.build_platform)
+    def ms_build_platform(self) -> MSPlatform:
+        assert self.build_platform
+        return _platform_to_ms_form[self.build_platform]
 
     @property
-    def address_model(self) -> str:
-        return get_value(_platform_to_address_model, self.build_platform)
+    def address_model(self) -> AddressModel:
+        assert self.build_platform
+        return _platform_to_address_model[self.build_platform]
 
     @property
     def this_path(self) -> Path:
@@ -238,7 +268,7 @@ class NativeMaker:
 
     @property
     def boost_bin_path(self) -> Path:
-        return self.boost_path / f"lib{self.build_platform}-msvc-14.1"
+        return self.boost_path / f"lib{self.address_model}-msvc-{get_msvc_internal_ver()}"
 
     @property
     def rdkit_csharp_build_path(self) -> Path:
@@ -284,59 +314,71 @@ class NativeMaker:
         return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(self.cairo_path))
 
     def _get_cmake_rdkit_cmd_line(self) -> str:
-        cmd = (
-            "cmake "
-            + f"{str(self.rdkit_path)} "
-            + f'-G"{self.g_option_of_cmake}" '
-            + "-DRDK_BUILD_SWIG_WRAPPERS=ON "
-            + "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON "
-            + "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF "
-            + "-DRDK_BUILD_PYTHON_WRAPPERS=OFF "
-            + (
-                (
-                    f"-DBOOST_ROOT={str(self.boost_path)} "
-                    + f"-DBOOST_INCLUDEDIR={str(self.boost_path)} "
-                    + f"-DBOOST_LIBRARYDIR={str(self.boost_bin_path)} "
-                )
-                if self.config.boost_path
-                else ""
-            )
-            + (f"-DEIGEN3_INCLUDE_DIR={str(self.eigen_path)} " if self.config.eigen_path else "")
-            + "-DRDK_INSTALL_INTREE=OFF "
-            + "-DRDK_BUILD_CPP_TESTS=ON "
-            + "-DRDK_USE_BOOST_REGEX=ON "
-            + "-DRDK_BUILD_COORDGEN_SUPPORT=ON "
-            + "-DRDK_BUILD_MAEPARSER_SUPPORT=ON "
-            + "-DRDK_OPTIMIZE_POPCNT=ON "
-            + "-DRDK_BUILD_FREESASA_SUPPORT=OFF "
-            + "-DRDK_BUILD_THREADSAFE_SSS=ON "
-            + "-DRDK_BUILD_INCHI_SUPPORT=ON "
-            + "-DRDK_BUILD_AVALON_SUPPORT=ON "
-            + "-DRDK_BUILD_CAIRO_SUPPORT=ON "
-            + f'-DCAIRO_INCLUDE_DIRS={self.cairo_path / "src"} '
-            + f"-DCAIRO_LIBRARIES="
-            f'{self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.lib"} '
+        args = [f"{str(self.rdkit_path)}", f"{self.g_option_of_cmake}"]
+        args += [
+            "-DRDK_BUILD_SWIG_WRAPPERS=ON",
+            "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON",
+            "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF",
+            "-DRDK_BUILD_PYTHON_WRAPPERS=OFF",
+        ]
+        if self.config.boost_path:
+            args += [
+                f"-DBOOST_ROOT={str(self.boost_path)}",
+                f"-DBOOST_INCLUDEDIR={str(self.boost_path)}",
+                f"-DBOOST_LIBRARYDIR={str(self.boost_bin_path)}",
+            ]
+        if self.config.eigen_path:
+            args += [f"-DEIGEN3_INCLUDE_DIR={str(self.eigen_path)}"]
+        zlib_lib_path = self.zlib_path / self.build_dir_name / "Release" / "zlib.lib"
+        args += [
+            f'-DZLIB_LIBRARIES="{zlib_lib_path}"',
+            f'-DZLIB_INCLUDE_DIRS="{self.zlib_path}"',
+        ]
+        cairo_lib_path = (
+            self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.lib"
         )
+        args += [
+            f'-DCAIRO_INCLUDE_DIRS={self.cairo_path / "src"}',
+            f"-DCAIRO_LIBRARIES={cairo_lib_path}",
+        ]
+        args += [
+            "-DRDK_INSTALL_INTREE=OFF",
+            "-DRDK_BUILD_CPP_TESTS=ON",
+            "-DRDK_USE_BOOST_REGEX=ON",
+            "-DRDK_BUILD_COORDGEN_SUPPORT=ON",
+            "-DRDK_BUILD_MAEPARSER_SUPPORT=ON",
+            "-DRDK_OPTIMIZE_POPCNT=ON",
+            "-DRDK_BUILD_FREESASA_SUPPORT=OFF",
+            "-DRDK_BUILD_THREADSAFE_SSS=ON",
+            "-DRDK_BUILD_INCHI_SUPPORT=ON",
+            "-DRDK_BUILD_AVALON_SUPPORT=ON",
+            "-DRDK_BUILD_CAIRO_SUPPORT=ON",
+        ]
 
         if self.get_rdkit_version() >= 2020091:
+            # needs followings after 2020_09_1
+            args += [
+                "-DRDK_SWIG_STATIC=OFF",
+                "-DRDK_INSTALL_STATIC_LIBS=OFF",
+                "-DRDK_INSTALL_DLLS_MSVC=ON",
+                "-DRDK_BUILD_TEST_GZIP=OFF",
+                "-DRDK_USE_URF=ON",
+            ]
             # freetype supports starts from 2020_09_1
-            assert self.config.freetype_path
-            cmd += (
-                ""
-                + "-DRDK_SWIG_STATIC=OFF "
-                + "-DRDK_INSTALL_STATIC_LIBS=OFF "
-                + "-DRDK_INSTALL_DLLS_MSVC=ON "
-                + (
-                    (
-                        f"-DFREETYPE_LIBRARY={self.freetype_path / 'objs' / self.ms_build_platform / 'Release' / 'freetype.lib'} "  # NOQA
-                        + f"-DFREETYPE_INCLUDE_DIRS={self.freetype_path / 'include'} "
-                    )
-                    if self.config.freetype_path
-                    else ""
+            if self.config.freetype_path:
+                freetype_lib_path = (
+                    self.freetype_path
+                    / "objs"
+                    / self.ms_build_platform
+                    / "Release"
+                    / "freetype.lib"
                 )
-                + "-DRDK_BUILD_TEST_GZIP=OFF "
-                + "-DRDK_USE_URF=ON "
-            )
+                freetype_include_path = self.freetype_path / "include"
+                args += [
+                    f"-DFREETYPE_LIBRARY={freetype_lib_path}",
+                    f"-DFREETYPE_INCLUDE_DIRS={freetype_include_path}",
+                ]
+        cmd = " ".join(["cmake"] + args)
         return cmd
 
     def _make_rdkit_cmake(self) -> None:
@@ -374,10 +416,8 @@ class NativeMaker:
                 files_to_copy.append(filename)
 
         # DLLs of boost.
-        for filename in glob.glob(
-            str(self.boost_path / f"lib{self.address_model}-msvc-14.1" / "*.dll")
-        ):
-            if re.match(r".*\-vc141\-mt\-x(32|64)\-\d_\d\d\.dll", filename):
+        for filename in glob.glob(str(self.boost_bin_path / "*.dll")):
+            if re.match(r".*\-vc\d\d\d\-mt\-x(32|64)\-\d_\d\d\.dll", filename):
                 # boost_python-vc###-mt-x##-#_##.dll is not needed.
                 if not os.path.basename(filename).startswith("boost_python"):
                     files_to_copy.append(filename)
@@ -455,7 +495,7 @@ class NativeMaker:
         _curdir = os.path.abspath(os.curdir)
         try:
             os.chdir(build_path)
-            cmd = f'cmake {str(self.zlib_path)} -G"{self.g_option_of_cmake}" '
+            cmd = f"cmake {str(self.zlib_path)} {self.g_option_of_cmake} "
             call_subprocess(cmd)
             self.run_msbuild("zlib.sln")
             shutil.copy2(build_path / "zconf.h", self.zlib_path)
@@ -471,7 +511,7 @@ class NativeMaker:
             cmd = (
                 "cmake "
                 + f"{str(self.libpng_path)} "
-                + f'-G"{self.g_option_of_cmake}" '
+                + f"{self.g_option_of_cmake} "
                 + f'-DZLIB_LIBRARY="{str(self.zlib_path / self.build_dir_name / "Release" / "zlib.lib")}" '  # NOQA
                 + f'-DZLIB_INCLUDE_DIR="{str(self.zlib_path)}" '
                 + "-DPNG_SHARED=ON "
@@ -481,6 +521,20 @@ class NativeMaker:
             self.run_msbuild("libpng.sln")
         finally:
             os.chdir(_curdir)
+
+    def vs15_proj_to_vs16(self, proj_file: Path) -> None:
+        _V = "VCProjectVersion"
+        _P = "PlatformToolset"
+        replace_file_string(
+            proj_file,
+            [
+                (f"\\<{_V}>15\\.0\\<\\/{_V}\\>", f"<{_V}>{get_vs_ver()}</{_V}>",),
+                (
+                    f"\\<{_P}\\>v141\\<\\/{_P}\\>",
+                    f"<{_P}>v{get_msvc_internal_ver().replace('.', '')}</{_P}>",
+                ),
+            ],
+        )
 
     def make_pixman(self) -> None:
         _curdir = os.path.abspath(os.curdir)
@@ -493,6 +547,9 @@ class NativeMaker:
             shutil.copy2(files_dir / vcxproj, proj_dir)
             proj_file = proj_dir / vcxproj
             shutil.copy2(files_dir / "config.h", self.pixman_path / "pixman")
+
+            self.vs15_proj_to_vs16(proj_file)
+
             makefile_win32 = self.pixman_path / "pixman" / "Makefile.win32"
             makefile_sources = self.pixman_path / "pixman" / "Makefile.sources"
 
@@ -538,6 +595,7 @@ class NativeMaker:
             shutil.copy2(files_dir / vcxproj, proj_dir)
             proj_file = proj_dir / vcxproj
             shutil.copy2(files_dir / "cairo-features.h", self.cairo_path / "src")
+            self.vs15_proj_to_vs16(proj_file)
             replace_file_string(
                 proj_file,
                 [
@@ -608,7 +666,7 @@ class NativeMaker:
         content = item_group.find(XPATH_CONTENT_RDFUNC_DLL, ns)
         assert content
         item_group.remove(content)
-        for cpu_model in cpu_models:
+        for cpu_model in typing.get_args(CpuModel):
             for filename in glob.glob(str(self.rdkit_csharp_wrapper_path / cpu_model / "*.dll")):
                 basename = os.path.basename(filename)
                 content = SubElement(item_group, "Content")
@@ -651,7 +709,7 @@ class NativeMaker:
 
     def build_nuget_package(self) -> None:
         dll_basenames_dic: Dict[str, List[str]] = dict()
-        for cpu_model in cpu_models:
+        for cpu_model in typing.get_args(CpuModel):
             dlls_path = self.rdkit_csharp_wrapper_path / cpu_model
             dll_basenames: List[str] = []
             for filename in glob.glob(str(dlls_path / "*.dll")):
@@ -687,11 +745,12 @@ class NativeMaker:
                 ),
                 ("__RDKITVERSION__", f"{self.get_version_for_rdkit()}",),
                 ("__LIBVERSIONS__", ", ".join(lib_versions),),
+                ("__VISUALSTUDIOVERSION__", f"{get_vs_ver()}",),
             ],
         )
 
         nuspec_dlls_spec = []
-        for cpu_model in cpu_models:
+        for cpu_model in typing.get_args(CpuModel):
             for dll_basename in dll_basenames_dic[cpu_model]:
                 nuspec_dlls_spec.append(
                     f'<file src="{cpu_model}/{dll_basename}" target="runtimes/win-{cpu_model}/native" />\n'  # NOQA
@@ -704,7 +763,7 @@ class NativeMaker:
             self.rdkit_csharp_wrapper_path,
         )
         targets_dlls_spec: List[str] = []
-        for cpu_model in cpu_models:
+        for cpu_model in typing.get_args(CpuModel):
             targets_dlls_spec.append(
                 f"<ItemGroup Condition=\" '$(Platform)' == '{cpu_model}' \">\\n"
             )
@@ -721,7 +780,7 @@ class NativeMaker:
 
         targets_dlls_spec.append("<ItemGroup Condition=\" '$(Platform)' == 'AnyCPU' \">\\n")
 
-        for cpu_model in cpu_models:
+        for cpu_model in typing.get_args(CpuModel):
             for dllname in dll_basenames_dic[cpu_model]:
                 targets_dlls_spec.append(
                     f'<None Include="$(MSBuildThisFileDirectory)../runtimes/win-{cpu_model}/native/{dllname}">\\n'  # NOQA
@@ -756,19 +815,19 @@ class NativeMaker:
             ):
                 remove_if_exist(rdkit_path_csharp_wrapper / p)
             remove_if_exist(self.rdkit_path / "lib")
-            for p in cpu_models:
+            for p in typing.get_args(CpuModel):
                 remove_if_exist(rdkit_path_csharp_wrapper / p)
                 remove_if_exist(self.rdkit_path / f"build{p}CSharp")
         if self.config.freetype_path:
-            for p in cpu_models:
+            for p in typing.get_args(CpuModel):
                 remove_if_exist(self.freetype_path / "objs" / _platform_to_ms_form[p])
         if self.config.zlib_path:
-            for p in cpu_models:
+            for p in typing.get_args(CpuModel):
                 remove_if_exist(self.zlib_path / "zconf.h")
-                remove_if_exist(self.zlib_path / f"build{_platform_to_ms_form[p]}")
+                remove_if_exist(self.zlib_path / f"build{p}")
         if self.config.libpng_path:
-            for p in cpu_models:
-                remove_if_exist(self.libpng_path / f"build{_platform_to_ms_form[p]}")
+            for p in typing.get_args(CpuModel):
+                remove_if_exist(self.libpng_path / f"build{p}")
         if self.config.pixman_path:
             remove_if_exist(self.pixman_path / "vc2017")
         if self.config.cairo_path:
@@ -804,11 +863,6 @@ def main() -> None:
     parser.add_argument("--clean", default=False, action="store_true")
     args = parser.parse_args()
 
-    def get_value_from_env(env: str, default: Optional[str] = None) -> Optional[str]:
-        if env not in os.environ:
-            return default
-        return os.environ[env]
-
     def path_from_arg_or_env(arg: Any, env: str) -> Optional[Path]:
         if arg:
             return Path(arg)
@@ -837,7 +891,7 @@ def main() -> None:
         if args.clean:
             NativeMaker(config).clean()
         for platform in (
-            cpu_models
+            typing.get_args(CpuModel)
             if not args.build_platform or args.build_platform == "all"
             else (args.build_platform,)
         ):
