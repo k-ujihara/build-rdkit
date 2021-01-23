@@ -43,9 +43,9 @@ AddressModel = Literal[32, 64]
 MSVCInternalVersion = Literal["14.1", "14.2"]
 
 here = Path(__file__).parent.resolve()
-_vs_ver_to_cmake_option_catalog: Mapping[VisualStudioVersion, Mapping[CpuModel, str]] = {
-    "15.0": {"x86": '-G"Visual Studio 15 2017"', "x64": '-G"Visual Studio 15 2017 Win64"',},
-    "16.0": {"x86": '-G"Visual Studio 16 2019" -AWin32', "x64": '-G"Visual Studio 16 2019"',},
+_vs_ver_to_cmake_option_catalog: Mapping[VisualStudioVersion, Mapping[CpuModel, Sequence[str]]] = {
+    "15.0": {"x86": ['-G"Visual Studio 15 2017"'], "x64": ['-G"Visual Studio 15 2017 Win64"'],},
+    "16.0": {"x86": ['-G"Visual Studio 16 2019"', "-AWin32"], "x64": ["-GVisual Studio 16 2019"],},
 }
 _platform_to_ms_form: Mapping[CpuModel, MSPlatform] = {
     "x86": "Win32",
@@ -108,7 +108,7 @@ def insert_line_after(
         file.write("\n".join(new_lines) + "\n")
 
 
-def call_subprocess(cmd: str) -> None:
+def call_subprocess(cmd: Sequence[str]) -> None:
     try:
         _env: Dict[str, str] = {}
         _env.update(os.environ)
@@ -116,11 +116,13 @@ def call_subprocess(cmd: str) -> None:
             "CL": "/source-charset:utf-8 /execution-charset:utf-8"
         }
         _env.update(_CL_env_for_MSVC)
-        logging.info(os.path.abspath(os.curdir))
+        logging.info(f"pwd={os.path.abspath(os.curdir)}")
         logging.info(cmd)
-        subprocess.check_call(cmd, env=_env)
+        subprocess.check_call(
+            " ".join([s for s in cmd if s]) if os.name == "nt" else cmd, env=_env
+        )
     except subprocess.CalledProcessError as e:
-        logging.warn(e)
+        logging.warning(e)
         sys.exit(e.returncode)
 
 
@@ -197,7 +199,9 @@ class NativeMaker:
         self.config = config
 
     @property
-    def g_option_of_cmake(self) -> str:
+    def g_option_of_cmake(self) -> Sequence[str]:
+        if os.name == "posix":
+            return ['-G"Unix Makefiles"']
         assert self.build_platform
         return _vs_ver_to_cmake_option_catalog[get_vs_ver()][self.build_platform]
 
@@ -209,7 +213,7 @@ class NativeMaker:
     @property
     def build_dir_name_for_csharp(self) -> str:
         assert self.build_platform
-        return f"build{self.build_platform}CSharp"
+        return f"build{os.name}{self.build_platform}CSharp"
 
     @property
     def ms_build_platform(self) -> MSPlatform:
@@ -313,8 +317,9 @@ class NativeMaker:
     def get_version_for_cairo(self) -> str:
         return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(self.cairo_path))
 
-    def _get_cmake_rdkit_cmd_line(self) -> str:
-        args = [f"{str(self.rdkit_path)}", f"{self.g_option_of_cmake}"]
+    def _get_cmake_rdkit_cmd_line(self) -> List[str]:
+        args = [f"{str(self.rdkit_path)}"]
+        args += self.g_option_of_cmake
         args += [
             "-DRDK_BUILD_SWIG_WRAPPERS=ON",
             "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON",
@@ -329,30 +334,33 @@ class NativeMaker:
             ]
         if self.config.eigen_path:
             args += [f"-DEIGEN3_INCLUDE_DIR={str(self.eigen_path)}"]
-        zlib_lib_path = self.zlib_path / self.build_dir_name / "Release" / "zlib.lib"
-        args += [
-            f'-DZLIB_LIBRARIES="{zlib_lib_path}"',
-            f'-DZLIB_INCLUDE_DIRS="{self.zlib_path}"',
-        ]
-        cairo_lib_path = (
-            self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.lib"
-        )
-        args += [
-            f'-DCAIRO_INCLUDE_DIRS={self.cairo_path / "src"}',
-            f"-DCAIRO_LIBRARIES={cairo_lib_path}",
-        ]
+        if self.config.zlib_path:
+            zlib_lib_path = self.zlib_path / self.build_dir_name / "Release" / "zlib.lib"
+            args += [
+                f'-DZLIB_LIBRARIES="{zlib_lib_path}"',
+                f'-DZLIB_INCLUDE_DIRS="{self.zlib_path}"',
+            ]
+        if self.config.cairo_path:
+            cairo_lib_path = (
+                self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.lib"
+            )
+            args += [
+                f'-DCAIRO_INCLUDE_DIRS={self.cairo_path / "src"}',
+                f"-DCAIRO_LIBRARIES={cairo_lib_path}",
+            ]
         args += [
             "-DRDK_INSTALL_INTREE=OFF",
-            "-DRDK_BUILD_CPP_TESTS=ON",
+            "-DRDK_BUILD_CPP_TESTS=OFF",
             "-DRDK_USE_BOOST_REGEX=ON",
             "-DRDK_BUILD_COORDGEN_SUPPORT=ON",
-            "-DRDK_BUILD_MAEPARSER_SUPPORT=ON",
+            # # FIXME: Failed to build maeparser on my WSL.
+            # f"-DRDK_BUILD_MAEPARSER_SUPPORT={'OFF' if os.name == 'posix' else 'ON'}",
             "-DRDK_OPTIMIZE_POPCNT=ON",
             "-DRDK_BUILD_FREESASA_SUPPORT=OFF",
             "-DRDK_BUILD_THREADSAFE_SSS=ON",
             "-DRDK_BUILD_INCHI_SUPPORT=ON",
             "-DRDK_BUILD_AVALON_SUPPORT=ON",
-            "-DRDK_BUILD_CAIRO_SUPPORT=ON",
+            f"-DRDK_BUILD_CAIRO_SUPPORT={'ON' if self.config.cairo_support else 'OFF'}",
         ]
 
         if self.get_rdkit_version() >= 2020091:
@@ -378,64 +386,86 @@ class NativeMaker:
                     f"-DFREETYPE_LIBRARY={freetype_lib_path}",
                     f"-DFREETYPE_INCLUDE_DIRS={freetype_include_path}",
                 ]
-        cmd = " ".join(["cmake"] + args)
-        return cmd
+        return ["cmake"] + args
 
     def _make_rdkit_cmake(self) -> None:
-        cmd = self._get_cmake_rdkit_cmd_line()
-        cmd = cmd.replace("\\", "/")
+        cmd: List[str] = self._get_cmake_rdkit_cmd_line()
+        if os.name == "nt":
+            cmd = [a.replace("\\", "/") for a in cmd]
         call_subprocess(cmd)
 
     def _build_rdkit_native(self) -> None:
-        self.run_msbuild("RDKit.sln")
+        if os.name == "nt":
+            self.run_msbuild("RDKit.sln")
+        else:
+            cmd = "make -j RDKFuncs".split(" ")
+            call_subprocess(cmd)
 
     def _copy_dlls(self) -> None:
         assert self.build_platform
-        dll_dest_path = self.rdkit_csharp_wrapper_path / self.build_platform
+        dll_dest_path = self.rdkit_csharp_wrapper_path / os.name / self.build_platform
         remove_if_exist(dll_dest_path)
-        dll_dest_path.mkdir()
+        os.makedirs(dll_dest_path)
         logging.info(f"Copy DLLs to {dll_dest_path}.")
 
         files_to_copy: List[Union[str, PathLike]] = []
+        a: Path
 
-        # "RDKFuncs.dll".
-        files_to_copy.append(
-            self.rdkit_csharp_build_path
-            / "Code"
-            / "JavaWrappers"
-            / "csharp_wrapper"
-            / "Release"
-            / "RDKFuncs.dll"
-        )
+        a = self.rdkit_csharp_build_path / "Code" / "JavaWrappers" / "csharp_wrapper"
+        if os.name == "nt":
+            a = a / "Release" / "RDKFuncs.dll"
+        elif os.name == "posix":
+            a = a / "RDKFuncs.so"
+        else:
+            raise RuntimeError
+        files_to_copy.append(a)
 
         # DLLs of rdkit. Since 2020_09_1 submodules are separated.
         if self.get_rdkit_version() >= 2020091:
-            for filename in glob.glob(
-                str(self.rdkit_csharp_build_path / "bin" / "Release" / "*.dll")
-            ):
+            if os.name == "nt":
+                a = self.rdkit_csharp_build_path / "bin" / "Release" / "*.dll"
+            elif os.name == "posix":
+                a = (
+                    self.rdkit_csharp_build_path
+                    / "lib"
+                    / f"*.so.1.{self.get_version_for_rdkit().replace('_', '.')}"
+                )
+            else:
+                raise RuntimeError
+            for filename in glob.glob(str(a)):
                 files_to_copy.append(filename)
 
-        # DLLs of boost.
-        for filename in glob.glob(str(self.boost_bin_path / "*.dll")):
-            if re.match(r".*\-vc\d\d\d\-mt\-x(32|64)\-\d_\d\d\.dll", filename):
-                # boost_python-vc###-mt-x##-#_##.dll is not needed.
-                if not os.path.basename(filename).startswith("boost_python"):
-                    files_to_copy.append(filename)
+        # TODO: Copy so files to local.
+        if os.name == "nt":
+            # DLLs of boost.
+            for filename in glob.glob(str(self.boost_bin_path / "*.dll")):
+                if re.match(r".*\-vc\d\d\d\-mt\-x(32|64)\-\d_\d\d\.dll", filename):
+                    # boost_python-vc###-mt-x##-#_##.dll is not needed.
+                    if not os.path.basename(filename).startswith("boost_python"):
+                        files_to_copy.append(filename)
 
-        # DLLs of fonttype.
-        if self.config.cairo_support or self.get_rdkit_version() >= 2020091:
-            files_to_copy.append(
-                self.freetype_path / "objs" / self.ms_build_platform / "Release" / "freetype.dll"
-            )
+            # DLLs of fonttype.
+            if self.config.cairo_support or self.get_rdkit_version() >= 2020091:
+                files_to_copy.append(
+                    self.freetype_path
+                    / "objs"
+                    / self.ms_build_platform
+                    / "Release"
+                    / "freetype.dll"
+                )
 
-        # DLLs of cairo.
-        if self.config.cairo_support:
-            files_to_copy += [
-                self.zlib_path / self.build_dir_name / "Release" / "zlib.dll",
-                self.libpng_path / self.build_dir_name / "Release" / "libpng16.dll",
-                self.pixman_path / "vc2017" / self.ms_build_platform / "Release" / "pixman.dll",
-                self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.dll",
-            ]
+            # DLLs of cairo.
+            if self.config.cairo_support:
+                files_to_copy += [
+                    self.zlib_path / self.build_dir_name / "Release" / "zlib.dll",
+                    self.libpng_path / self.build_dir_name / "Release" / "libpng16.dll",
+                    self.pixman_path
+                    / "vc2017"
+                    / self.ms_build_platform
+                    / "Release"
+                    / "pixman.dll",
+                    self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.dll",
+                ]
 
         # Copy files.
         for path in files_to_copy:
@@ -486,7 +516,12 @@ class NativeMaker:
     def run_msbuild(self, proj: Union[PathLike, str], platform: Optional[str] = None) -> None:
         if not platform:
             platform = self.ms_build_platform
-        cmd = f"MSBuild {proj} /p:Configuration=Release,Platform={platform} /maxcpucount"
+        cmd = [
+            "MSBuild",
+            str(proj),
+            f"/p:Configuration=Release,Platform={platform}",
+            "/maxcpucount",
+        ]
         call_subprocess(cmd)
 
     def make_zlib(self) -> None:
@@ -495,7 +530,7 @@ class NativeMaker:
         _curdir = os.path.abspath(os.curdir)
         try:
             os.chdir(build_path)
-            cmd = f"cmake {str(self.zlib_path)} {self.g_option_of_cmake} "
+            cmd = ["cmake", str(self.zlib_path)] + list(self.g_option_of_cmake)
             call_subprocess(cmd)
             self.run_msbuild("zlib.sln")
             shutil.copy2(build_path / "zconf.h", self.zlib_path)
@@ -624,6 +659,14 @@ class NativeMaker:
         finally:
             os.chdir(_curdir)
 
+    @property
+    def path_GraphMolCSharp_i(self):
+        return self.rdkit_csharp_wrapper_path / "GraphMolCSharp.i"
+
+    @property
+    def path_MolDraw2D_i(self):
+        return self.rdkit_path / "Code" / "JavaWrappers" / "MolDraw2D.i"
+
     def build_rdkit(self) -> None:
         self.rdkit_csharp_build_path.mkdir(exist_ok=True)
         _curdir = os.path.abspath(os.curdir)
@@ -631,13 +674,13 @@ class NativeMaker:
         try:
             if self.config.swig_patch_enabled:
                 replace_file_string(
-                    self.rdkit_csharp_wrapper_path / "GraphMolCSharp.i",
-                    [("boost::int32_t", "int32_t",), ("boost::uint32_t", "uint32_t",)],
+                    self.path_GraphMolCSharp_i,
+                    [("boost::int32_t", "int32_t",), ("boost::uint32_t", "uint32_t",),],
                     make_backup=True,
                 )
             if self.config.cairo_support:
                 insert_line_after(
-                    self.rdkit_path / "Code" / "JavaWrappers" / "MolDraw2D.i",
+                    self.path_MolDraw2D_i,
                     {
                         r"#include <GraphMol/MolDraw2D/MolDraw2DSVG.h>": r"#include <GraphMol/MolDraw2D/MolDraw2DCairo.h>",  # NOQA
                         r"%include <GraphMol/MolDraw2D/MolDraw2DSVG.h>": r"%include <GraphMol/MolDraw2D/MolDraw2DCairo.h>",  # NOQA
@@ -650,24 +693,47 @@ class NativeMaker:
         finally:
             os.chdir(_curdir)
 
+    @property
+    def path_RDKit2DotNet_csproj(self):
+        return self.rdkit_csharp_wrapper_path / "RDKit2DotNet.csproj"
+
     def build_csharp_wrapper(self) -> None:
+        if os.name == "nt":
+            self._win_build_csharp_wrapper()
+        elif os.name == "posix":
+            self._posix_build_csharp_wrapper()
+        else:
+            raise RuntimeError
+
+    def _posix_build_csharp_wrapper(self) -> None:
         self._patch_rdkit_swig_files()
-        path_RDKit2DotNet_csproj = self.rdkit_csharp_wrapper_path / "RDKit2DotNet.csproj"
-        make_or_restore_bak(path_RDKit2DotNet_csproj)
+        _pushed_dir = os.getcwd()
+        try:
+            os.chdir(self.rdkit_csharp_build_path)
+            call_subprocess("make -j RDKFuncsDLL".split(" "))
+        finally:
+            os.chdir(_pushed_dir)
+
+    def _win_build_csharp_wrapper(self) -> None:
+        self._patch_rdkit_swig_files()
+        make_or_restore_bak(self.path_RDKit2DotNet_csproj)
         ns = {"msbuild": "http://schemas.microsoft.com/developer/msbuild/2003"}
         ET.register_namespace("", ns["msbuild"])
-        tree = ET.parse(path_RDKit2DotNet_csproj)
+        tree = ET.parse(self.path_RDKit2DotNet_csproj)
         XPATH_CONTENT_RDFUNC_DLL = "msbuild:Content[@Include='RDKFuncs.dll']"
         item_group = tree.find(f"./msbuild:ItemGroup/{XPATH_CONTENT_RDFUNC_DLL}/..", ns)
         if not item_group:
             raise ValueError(
-                f"<Content Include='RDKFuncs.dll' /> is not found in {path_RDKit2DotNet_csproj}."
+                "<Content Include='RDKFuncs.dll' /> is not found"
+                + f" in {self.path_RDKit2DotNet_csproj}."
             )
         content = item_group.find(XPATH_CONTENT_RDFUNC_DLL, ns)
         assert content
         item_group.remove(content)
         for cpu_model in typing.get_args(CpuModel):
-            for filename in glob.glob(str(self.rdkit_csharp_wrapper_path / cpu_model / "*.dll")):
+            for filename in glob.glob(
+                str(self.rdkit_csharp_wrapper_path / os.name / cpu_model / "*.dll")
+            ):
                 basename = os.path.basename(filename)
                 content = SubElement(item_group, "Content")
                 content.attrib["Include"] = f"{cpu_model}\\\\{basename}"
@@ -680,7 +746,7 @@ class NativeMaker:
         sign_assembly.text = "true"
         assembly_originator_key_file = SubElement(property_group, "AssemblyOriginatorKeyFile")
         assembly_originator_key_file.text = "rdkit2dotnet.snk"
-        tree.write(path_RDKit2DotNet_csproj, "utf-8", True)
+        tree.write(self.path_RDKit2DotNet_csproj, "utf-8", True)
 
         for src, dst in (
             (
@@ -812,12 +878,21 @@ class NativeMaker:
             for p in (
                 f"{project_name}.nuspec",
                 f"{project_name}.targets",
+                "swig_csharp",
             ):
                 remove_if_exist(rdkit_path_csharp_wrapper / p)
+            for _os in (
+                "nt",
+                "posix",
+            ):
+                remove_if_exist(rdkit_path_csharp_wrapper / _os)
             remove_if_exist(self.rdkit_path / "lib")
-            for p in typing.get_args(CpuModel):
-                remove_if_exist(rdkit_path_csharp_wrapper / p)
-                remove_if_exist(self.rdkit_path / f"build{p}CSharp")
+            for _os in (
+                "nt",
+                "posix",
+            ):
+                for p in typing.get_args(CpuModel):
+                    remove_if_exist(self.rdkit_path / f"build{_os}{p}CSharp")
         if self.config.freetype_path:
             for p in typing.get_args(CpuModel):
                 remove_if_exist(self.freetype_path / "objs" / _platform_to_ms_form[p])
@@ -832,11 +907,19 @@ class NativeMaker:
             remove_if_exist(self.pixman_path / "vc2017")
         if self.config.cairo_path:
             remove_if_exist(self.cairo_path / "vc2017")
+        for path in (
+            self.path_RDKit2DotNet_csproj,
+            self.path_GraphMolCSharp_i,
+            self.path_MolDraw2D_i,
+        ):
+            make_or_restore_bak(path)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--build_platform", choices=("x86", "x64", "all"))
+    parser.add_argument(
+        "--build_platform", default="all", choices=list(typing.get_args(CpuModel)) + ["all"]
+    )
     parser.add_argument("--disable_swig_patch", default=False, action="store_true")
     for opt in (
         "build_zlib",
@@ -862,6 +945,12 @@ def main() -> None:
         parser.add_argument(f"--{opt}_dir", type=str)
     parser.add_argument("--clean", default=False, action="store_true")
     args = parser.parse_args()
+
+    # only x64 is supported for POSIX
+    if os.name == "posix" and args.build_platform == "x86":
+        raise RuntimeError("x86 is not supported for POSIX system.")
+    if os.name == "posix" and (args.build_platform == "all" or not args.build_platform):
+        args.build_platform = "x64"
 
     def path_from_arg_or_env(arg: Any, env: str) -> Optional[Path]:
         if arg:
@@ -890,11 +979,10 @@ def main() -> None:
     try:
         if args.clean:
             NativeMaker(config).clean()
-        for platform in (
-            typing.get_args(CpuModel)
-            if not args.build_platform or args.build_platform == "all"
-            else (args.build_platform,)
-        ):
+        platforms = (
+            typing.get_args(CpuModel) if args.build_platform == "all" else (args.build_platform,)
+        )
+        for platform in platforms:
             maker = NativeMaker(config, platform)
             if args.build_freetype:
                 maker.make_freetype()
@@ -908,7 +996,8 @@ def main() -> None:
                 maker.make_cairo()
             if args.build_rdkit:
                 maker.build_rdkit()
-        maker = NativeMaker(config)
+        # if required x64 is used as platform
+        maker = NativeMaker(config, "x64")
         if args.build_wrapper:
             maker.build_csharp_wrapper()
         if args.build_nuget:

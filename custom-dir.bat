@@ -2,7 +2,7 @@
 
 @set THIS_DIR=%~dp0
 
-set MINOR_VERSION=3
+set MINOR_VERSION=4
 set RDKIT_DIR=%THIS_DIR%rdkit-Release_2020_09_3
 set BOOST_DIR=%THIS_DIR%boost_1_74_0
 set EIGEN_DIR=%THIS_DIR%eigen-3.3.8
