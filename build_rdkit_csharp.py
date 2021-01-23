@@ -45,7 +45,10 @@ MSVCInternalVersion = Literal["14.1", "14.2"]
 here = Path(__file__).parent.resolve()
 _vs_ver_to_cmake_option_catalog: Mapping[VisualStudioVersion, Mapping[CpuModel, Sequence[str]]] = {
     "15.0": {"x86": ['-G"Visual Studio 15 2017"'], "x64": ['-G"Visual Studio 15 2017 Win64"'],},
-    "16.0": {"x86": ['-G"Visual Studio 16 2019"', "-AWin32"], "x64": ["-GVisual Studio 16 2019"],},
+    "16.0": {
+        "x86": ['-G"Visual Studio 16 2019"', "-AWin32"],
+        "x64": ['-G"Visual Studio 16 2019"'],
+    },
 }
 _platform_to_ms_form: Mapping[CpuModel, MSPlatform] = {
     "x86": "Win32",
@@ -117,10 +120,13 @@ def call_subprocess(cmd: Sequence[str]) -> None:
         }
         _env.update(_CL_env_for_MSVC)
         logging.info(f"pwd={os.path.abspath(os.curdir)}")
-        logging.info(cmd)
-        subprocess.check_call(
-            " ".join([s for s in cmd if s]) if os.name == "nt" else cmd, env=_env
-        )
+        if os.name == "nt":
+            cmdline = " ".join([s for s in cmd if s])
+            logging.info(cmdline)
+            subprocess.check_call(cmdline, env=_env)
+        else:
+            logging.info(cmd)
+            subprocess.check_call(cmd, env=_env)
     except subprocess.CalledProcessError as e:
         logging.warning(e)
         sys.exit(e.returncode)
@@ -201,7 +207,7 @@ class NativeMaker:
     @property
     def g_option_of_cmake(self) -> Sequence[str]:
         if os.name == "posix":
-            return ['-G"Unix Makefiles"']
+            return ["-GUnix Makefiles"]
         assert self.build_platform
         return _vs_ver_to_cmake_option_catalog[get_vs_ver()][self.build_platform]
 
@@ -292,6 +298,16 @@ class NativeMaker:
     def get_version_for_nuget(self) -> str:
         return f"0.{self.get_rdkit_version()}.{self.config.minor_version}"
 
+    def get_version_for_rdkit_dotnetwrap(self) -> str:
+        num = self.get_rdkit_version()
+        major, minor, build, revision = (
+            0,
+            (num // 10) % 10000,
+            num % 10,
+            self.config.minor_version,
+        )
+        return f"{major}.{minor}.{build}.{revision}"
+
     def get_version_for_rdkit(self) -> str:
         num = self.get_rdkit_version()
         return f"{num // 1000}_{('00' + str((num % 1000) // 10))[-2:]}_{num % 10}"
@@ -353,14 +369,15 @@ class NativeMaker:
             "-DRDK_BUILD_CPP_TESTS=OFF",
             "-DRDK_USE_BOOST_REGEX=ON",
             "-DRDK_BUILD_COORDGEN_SUPPORT=ON",
-            # # FIXME: Failed to build maeparser on my WSL.
-            # f"-DRDK_BUILD_MAEPARSER_SUPPORT={'OFF' if os.name == 'posix' else 'ON'}",
+            # FIXME: Error can happen when the next value is ON on Linux system.
+            "-DRDK_BUILD_MAEPARSER_SUPPORT=" + ("ON" if os.name == "nt" else "OFF"),
             "-DRDK_OPTIMIZE_POPCNT=ON",
             "-DRDK_BUILD_FREESASA_SUPPORT=OFF",
             "-DRDK_BUILD_THREADSAFE_SSS=ON",
             "-DRDK_BUILD_INCHI_SUPPORT=ON",
             "-DRDK_BUILD_AVALON_SUPPORT=ON",
             f"-DRDK_BUILD_CAIRO_SUPPORT={'ON' if self.config.cairo_support else 'OFF'}",
+            "-DBoost_NO_BOOST_CMAKE=ON",
         ]
 
         if self.get_rdkit_version() >= 2020091:
@@ -368,10 +385,12 @@ class NativeMaker:
             args += [
                 "-DRDK_SWIG_STATIC=OFF",
                 "-DRDK_INSTALL_STATIC_LIBS=OFF",
-                "-DRDK_INSTALL_DLLS_MSVC=ON",
                 "-DRDK_BUILD_TEST_GZIP=OFF",
                 "-DRDK_USE_URF=ON",
             ]
+            if os.name == "nt":
+                args += ["-DRDK_INSTALL_DLLS_MSVC=ON"]
+        if self.get_rdkit_version() >= 2020091:
             # freetype supports starts from 2020_09_1
             if self.config.freetype_path:
                 freetype_lib_path = (
@@ -716,6 +735,26 @@ class NativeMaker:
 
     def _win_build_csharp_wrapper(self) -> None:
         self._patch_rdkit_swig_files()
+        os.makedirs(self.rdkit_csharp_wrapper_path / "Properties", exist_ok=True)
+        shutil.copy2(
+            self.this_path / "files" / "rdkit" / "AssemblyInfo.cs",
+            self.rdkit_csharp_wrapper_path / "Properties",
+        )
+        path_AssemblyInfo_cs = self.rdkit_csharp_wrapper_path / "Properties" / "AssemblyInfo.cs"
+        replace_file_string(
+            path_AssemblyInfo_cs,
+            [
+                (
+                    '\\[assembly\\s*\\:\\s*AssemblyVersion\\(\\"\\d+\\.\\d+\\.\\d+\\.\\d+\\"\\)\\]',
+                    f'[assembly: AssemblyVersion("{self.get_version_for_rdkit_dotnetwrap()}")]',
+                ),
+                (
+                    '\\[assembly\\s*\\:\\s*AssemblyFileVersion\\(\\"0\\.0\\.0\\.0\\"\\)\\]',
+                    f'[assembly: AssemblyFileVersion("{self.get_version_for_rdkit_dotnetwrap()}")]',
+                ),
+            ],
+        )
+        # get_version_for_rdkit_dotnetwrap
         make_or_restore_bak(self.path_RDKit2DotNet_csproj)
         ns = {"msbuild": "http://schemas.microsoft.com/developer/msbuild/2003"}
         ET.register_namespace("", ns["msbuild"])
@@ -730,13 +769,15 @@ class NativeMaker:
         content = item_group.find(XPATH_CONTENT_RDFUNC_DLL, ns)
         assert content
         item_group.remove(content)
+        elm_assembly_info = SubElement(item_group, "Compile")
+        elm_assembly_info.attrib["Include"] = "Properties\\AssemblyInfo.cs"
         for cpu_model in typing.get_args(CpuModel):
             for filename in glob.glob(
                 str(self.rdkit_csharp_wrapper_path / os.name / cpu_model / "*.dll")
             ):
                 basename = os.path.basename(filename)
                 content = SubElement(item_group, "Content")
-                content.attrib["Include"] = f"{cpu_model}\\\\{basename}"
+                content.attrib["Include"] = f"{os.name}\\\\{cpu_model}\\\\{basename}"
                 copy_to_output_directory = SubElement(content, "CopyToOutputDirectory")
                 copy_to_output_directory.text = "PreserveNewest"
 
@@ -879,6 +920,7 @@ class NativeMaker:
                 f"{project_name}.nuspec",
                 f"{project_name}.targets",
                 "swig_csharp",
+                "Properties",
             ):
                 remove_if_exist(rdkit_path_csharp_wrapper / p)
             for _os in (

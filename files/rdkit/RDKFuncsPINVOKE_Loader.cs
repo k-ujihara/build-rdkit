@@ -22,23 +22,28 @@ namespace GraphMolWrap
             {
                 case PlatformID.Win32NT:
                     const string DllFileName = ModuleName + ".dll";
-                    var subdir = Environment.Is64BitProcess ? "x64" : "x86";
-
+                    var _subdir = Environment.Is64BitProcess ? "x64" : "x86";
                     var executingAsm = System.Reflection.Assembly.GetExecutingAssembly();
+                    foreach (var ss in new[] { null, "nt"})
                     {
-                        var currPath = Path.GetDirectoryName(executingAsm.Location);
-                        if (SetDllDirectoryIfFileExist(currPath, subdir, DllFileName))
-                            goto L_Found;
-                    }
-                    {
-                        var uri = new Uri(executingAsm.CodeBase);
-                        if (uri.Scheme == "file")
+                        var subdir = ss == null ? _subdir : Path.Combine("nt", _subdir);
                         {
-                            var currPath = Path.GetDirectoryName(uri.AbsolutePath);
+                            var currPath = Path.GetDirectoryName(executingAsm.Location);
                             if (SetDllDirectoryIfFileExist(currPath, subdir, DllFileName))
                                 goto L_Found;
                         }
+                        {
+                            // for ASP.NET
+                            var uri = new Uri(executingAsm.CodeBase);
+                            if (uri.Scheme == "file")
+                            {
+                                var currPath = Path.GetDirectoryName(uri.AbsolutePath);
+                                if (SetDllDirectoryIfFileExist(currPath, subdir, DllFileName))
+                                    goto L_Found;
+                            }
+                        }
                     }
+                    
                 L_Found:
                     break;
                 default:
