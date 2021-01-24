@@ -8,6 +8,7 @@ import argparse
 import glob
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -33,7 +34,6 @@ from typing import (
 from xml.etree.ElementTree import ElementTree, SubElement
 
 logging.basicConfig(level=logging.DEBUG)
-
 project_name: str = "RDKit.DotNetWrap"
 
 VisualStudioVersion = Literal["15.0", "16.0"]
@@ -41,8 +41,15 @@ CpuModel = Literal["x86", "x64"]
 MSPlatform = Literal["Win32", "x64"]
 AddressModel = Literal[32, 64]
 MSVCInternalVersion = Literal["14.1", "14.2"]
+SupportedSystem = Literal["win", "linux"]
 
 here = Path(__file__).parent.resolve()
+
+_platform_system_to_system: Mapping[str, SupportedSystem] = {
+    "Windows": "win",
+    "Linux": "linux",
+}
+
 _vs_ver_to_cmake_option_catalog: Mapping[VisualStudioVersion, Mapping[CpuModel, Sequence[str]]] = {
     "15.0": {"x86": ['-G"Visual Studio 15 2017"'], "x64": ['-G"Visual Studio 15 2017 Win64"'],},
     "16.0": {
@@ -62,6 +69,13 @@ _vs_to_msvc_internal_ver: Mapping[VisualStudioVersion, MSVCInternalVersion] = {
     "15.0": "14.1",
     "16.0": "14.2",
 }
+
+
+def get_os() -> SupportedSystem:
+    pf = platform.system()
+    if pf not in _platform_system_to_system:
+        raise RuntimeError
+    return _platform_system_to_system[pf]
 
 
 def get_value(dic: Mapping[str, str], key: Optional[str]) -> str:
@@ -120,7 +134,7 @@ def call_subprocess(cmd: Sequence[str]) -> None:
         }
         _env.update(_CL_env_for_MSVC)
         logging.info(f"pwd={os.path.abspath(os.curdir)}")
-        if os.name == "nt":
+        if get_os() == "win":
             cmdline = " ".join([s for s in cmd if s])
             logging.info(cmdline)
             subprocess.check_call(cmdline, env=_env)
@@ -200,7 +214,6 @@ class Config(NamedTuple):
     cairo_path: Optional[Path] = None
     swig_path: Optional[Path] = None
     freetype_path: Optional[Path] = None
-    number_of_processors: int = 1
     minor_version: int = 1
     cairo_support: bool = False
     swig_patch_enabled: bool = True
@@ -214,10 +227,12 @@ class NativeMaker:
 
     @property
     def g_option_of_cmake(self) -> Sequence[str]:
-        if os.name == "posix":
+        if get_os() == "linux":
             return ["-GUnix Makefiles"]
-        assert self.build_platform
-        return _vs_ver_to_cmake_option_catalog[get_vs_ver()][self.build_platform]
+        if get_os() == "win":
+            assert self.build_platform
+            return _vs_ver_to_cmake_option_catalog[get_vs_ver()][self.build_platform]
+        raise RuntimeError
 
     @property
     def build_dir_name(self) -> str:
@@ -227,7 +242,7 @@ class NativeMaker:
     @property
     def build_dir_name_for_csharp(self) -> str:
         assert self.build_platform
-        return f"build{os.name}{self.build_platform}CSharp"
+        return f"build{get_os()}{self.build_platform}CSharp"
 
     @property
     def ms_build_platform(self) -> MSPlatform:
@@ -381,7 +396,7 @@ class NativeMaker:
             "-DRDK_USE_BOOST_REGEX=ON",
             "-DRDK_BUILD_COORDGEN_SUPPORT=ON",
             # FIXME: Error can happen when the next value is ON on Linux system.
-            "-DRDK_BUILD_MAEPARSER_SUPPORT=" + ("ON" if os.name == "nt" else "OFF"),
+            "-DRDK_BUILD_MAEPARSER_SUPPORT=" + ("ON" if get_os() == "win" else "OFF"),
             "-DRDK_OPTIMIZE_POPCNT=ON",
             "-DRDK_BUILD_FREESASA_SUPPORT=OFF",
             "-DRDK_BUILD_THREADSAFE_SSS=ON",
@@ -399,7 +414,7 @@ class NativeMaker:
                 f"-DRDK_BUILD_TEST_GZIP={f_test()}",
                 "-DRDK_USE_URF=ON",
             ]
-            if os.name == "nt":
+            if get_os() == "win":
                 args += ["-DRDK_INSTALL_DLLS_MSVC=ON"]
         if self.get_rdkit_version() >= 2020091:
             # freetype supports starts from 2020_09_1
@@ -420,12 +435,12 @@ class NativeMaker:
 
     def _make_rdkit_cmake(self) -> None:
         cmd: List[str] = self._get_cmake_rdkit_cmd_line()
-        if os.name == "nt":
+        if get_os() == "win":
             cmd = [a.replace("\\", "/") for a in cmd]
         call_subprocess(cmd)
 
     def _build_rdkit_native(self) -> None:
-        if os.name == "nt":
+        if get_os() == "win":
             self.run_msbuild("RDKit.sln")
         else:
             cmd = "make -j RDKFuncs".split(" ")
@@ -433,7 +448,7 @@ class NativeMaker:
 
     def _copy_dlls(self) -> None:
         assert self.build_platform
-        dll_dest_path = self.rdkit_csharp_wrapper_path / os.name / self.build_platform
+        dll_dest_path = self.rdkit_csharp_wrapper_path / get_os() / self.build_platform
         remove_if_exist(dll_dest_path)
         os.makedirs(dll_dest_path)
         logging.info(f"Copy DLLs to {dll_dest_path}.")
@@ -442,9 +457,9 @@ class NativeMaker:
         a: Path
 
         a = self.rdkit_csharp_build_path / "Code" / "JavaWrappers" / "csharp_wrapper"
-        if os.name == "nt":
+        if get_os() == "win":
             a = a / "Release" / "RDKFuncs.dll"
-        elif os.name == "posix":
+        elif get_os() == "linux":
             a = a / "RDKFuncs.so"
         else:
             raise RuntimeError
@@ -452,9 +467,9 @@ class NativeMaker:
 
         # DLLs of rdkit. Since 2020_09_1 submodules are separated.
         if self.get_rdkit_version() >= 2020091:
-            if os.name == "nt":
+            if get_os() == "win":
                 a = self.rdkit_csharp_build_path / "bin" / "Release" / "*.dll"
-            elif os.name == "posix":
+            elif get_os() == "linux":
                 a = (
                     self.rdkit_csharp_build_path
                     / "lib"
@@ -465,8 +480,8 @@ class NativeMaker:
             for filename in glob.glob(str(a)):
                 files_to_copy.append(filename)
 
-        # TODO: Copy so files to local.
-        if os.name == "nt":
+        # TODO: Copy libraries' so files to local.
+        if get_os() == "win":
             # DLLs of boost.
             for filename in glob.glob(str(self.boost_bin_path / "*.dll")):
                 if re.match(r".*\-vc\d\d\d\-mt\-x(32|64)\-\d_\d\d\.dll", filename):
@@ -726,21 +741,10 @@ class NativeMaker:
         return self.rdkit_csharp_wrapper_path / "RDKit2DotNet"
 
     def build_csharp_wrapper(self) -> None:
-        if os.name == "nt":
+        if get_os() == "win":
             self._win_build_csharp_wrapper()
-        elif os.name == "posix":
-            self._posix_build_csharp_wrapper()
         else:
-            raise RuntimeError
-
-    def _posix_build_csharp_wrapper(self) -> None:
-        self._patch_rdkit_swig_files()
-        _pushed_dir = os.getcwd()
-        try:
-            os.chdir(self.rdkit_csharp_build_path)
-            call_subprocess("make -j RDKFuncsDLL".split(" "))
-        finally:
-            os.chdir(_pushed_dir)
+            raise RuntimeError("Building wrapper is supported only on Windows.")
 
     def _win_build_csharp_wrapper(self) -> None:
         self._patch_rdkit_swig_files()
@@ -779,12 +783,12 @@ class NativeMaker:
         item_group = SubElement(project, "ItemGroup")
         for cpu_model in typing.get_args(CpuModel):
             for filename in glob.glob(
-                str(self.rdkit_csharp_wrapper_path / os.name / cpu_model / "*.dll")
+                str(self.rdkit_csharp_wrapper_path / get_os() / cpu_model / "*.dll")
             ):
                 basename = os.path.basename(filename)
                 content = SubElement(item_group, "None")
-                content.attrib["Include"] = f"..\\\\{os.name}\\\\{cpu_model}\\\\{basename}"
-                content.attrib["Link"] = f"{os.name}\\\\{cpu_model}\\\\{basename}"
+                content.attrib["Include"] = f"..\\\\{get_os()}\\\\{cpu_model}\\\\{basename}"
+                content.attrib["Link"] = f"{get_os()}\\\\{cpu_model}\\\\{basename}"
                 copy_to_output_directory = SubElement(content, "CopyToOutputDirectory")
                 copy_to_output_directory.text = "PreserveNewest"
 
@@ -812,9 +816,11 @@ class NativeMaker:
             os.chdir(_pushd_build_wrapper)
 
     def build_nuget_package(self) -> None:
+        _os: SupportedSystem
+
         dll_basenames_dic: Dict[str, Dict[str, List[str]]] = dict()
 
-        for _os in ["nt", "posix"]:
+        for _os in typing.get_args(SupportedSystem):
             if _os not in dll_basenames_dic:
                 dll_basenames_dic[_os] = dict()
             for cpu_model in typing.get_args(CpuModel):
@@ -823,10 +829,10 @@ class NativeMaker:
                 for filename in glob.glob(str(dlls_path / "*.*")):
                     dll_basenames.append(os.path.basename(filename))
                 dll_basenames_dic[_os][cpu_model] = dll_basenames
-        assert dll_basenames_dic["nt"]["x86"]
-        assert dll_basenames_dic["nt"]["x64"]
-        assert dll_basenames_dic["posix"]["x64"]
-        assert not dll_basenames_dic["posix"]["x86"]
+        assert dll_basenames_dic["win"]["x86"]
+        assert dll_basenames_dic["win"]["x64"]
+        assert dll_basenames_dic["linux"]["x64"]
+        assert not dll_basenames_dic["linux"]["x86"]
 
         # Prepare RDKit2DotNet.nuspec
 
@@ -861,20 +867,13 @@ class NativeMaker:
             ],
         )
 
-        def os_name_to_nuget(name: str) -> str:
-            if name == "nt":
-                return "win"
-            if name == "posix":
-                return "linux"
-            raise ValueError
-
         nuspec_dlls_spec = []
-        for _os in ["nt", "posix"]:
+        for _os in typing.get_args(SupportedSystem):
             for cpu_model in typing.get_args(CpuModel):
                 for dll_basename in dll_basenames_dic[_os][cpu_model]:
                     nuspec_dlls_spec.append(
                         f'<file src="{_os}/{cpu_model}/{dll_basename}" '
-                        f'target="runtimes/{os_name_to_nuget(_os)}-{cpu_model}/native" />\n'
+                        f'target="runtimes/{_os}-{cpu_model}/native" />\n'
                     )
 
         replace_file_string(nuspec_file, [("\\<nativefiles\\s*\\/\\>", "".join(nuspec_dlls_spec))])
@@ -891,39 +890,39 @@ class NativeMaker:
         )
 
         targets_dlls_spec: List[str] = []
-        for _os in ["nt"]:
-            for cpu_model in typing.get_args(CpuModel):
+        _os = "win"
+        for cpu_model in typing.get_args(CpuModel):
+            targets_dlls_spec.append(
+                f"<ItemGroup Condition=\"{non_net} And '$(Platform)' == '{cpu_model}' \">\\n"
+            )
+            for dllname in dll_basenames_dic[_os][cpu_model]:
                 targets_dlls_spec.append(
-                    f"<ItemGroup Condition=\"{non_net} And '$(Platform)' == '{cpu_model}' \">\\n"
+                    '<None Include="$(MSBuildThisFileDirectory)'
+                    f'../runtimes/{_os}-{cpu_model}/native/{dllname}">\\n'
                 )
-                for dllname in dll_basenames_dic[_os][cpu_model]:
-                    targets_dlls_spec.append(
-                        '<None Include="$(MSBuildThisFileDirectory)'
-                        f'../runtimes/{os_name_to_nuget(_os)}-{cpu_model}/native/{dllname}">\\n'
-                    )
-                    targets_dlls_spec.append(f"<Link>{dllname}</Link>\\n")
-                    targets_dlls_spec.append(
-                        "<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>\\n"
-                    )
-                    targets_dlls_spec.append("</None>\\n")
-                targets_dlls_spec.append("</ItemGroup>\\n")
+                targets_dlls_spec.append(f"<Link>{dllname}</Link>\\n")
+                targets_dlls_spec.append(
+                    "<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>\\n"
+                )
+                targets_dlls_spec.append("</None>\\n")
+            targets_dlls_spec.append("</ItemGroup>\\n")
 
         targets_dlls_spec.append(
             f"<ItemGroup Condition=\"{non_net} And '$(Platform)' == 'AnyCPU' \">\\n"
         )
 
-        for _os in ["nt"]:
-            for cpu_model in typing.get_args(CpuModel):
-                for dllname in dll_basenames_dic[_os][cpu_model]:
-                    targets_dlls_spec.append(
-                        f'<None Include="$(MSBuildThisFileDirectory)'
-                        f'../runtimes/{os_name_to_nuget(_os)}-{cpu_model}/native/{dllname}">\\n'
-                    )
-                    targets_dlls_spec.append(f"<Link>{cpu_model}/{dllname}</Link>\\n")
-                    targets_dlls_spec.append(
-                        "<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>\\n"
-                    )
-                    targets_dlls_spec.append("</None>\\n")
+        _os = "win"
+        for cpu_model in typing.get_args(CpuModel):
+            for dllname in dll_basenames_dic[_os][cpu_model]:
+                targets_dlls_spec.append(
+                    f'<None Include="$(MSBuildThisFileDirectory)'
+                    f'../runtimes/{_os}-{cpu_model}/native/{dllname}">\\n'
+                )
+                targets_dlls_spec.append(f"<Link>{cpu_model}/{dllname}</Link>\\n")
+                targets_dlls_spec.append(
+                    "<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>\\n"
+                )
+                targets_dlls_spec.append("</None>\\n")
 
         targets_dlls_spec.append("</ItemGroup>")
         replace_file_string(
@@ -947,26 +946,15 @@ class NativeMaker:
 
     def clean(self):
         if self.config.rdkit_path:
-            rdkit_path_csharp_wrapper = (
-                self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper"
-            )
-            for p in (
+            for p in [
                 f"{project_name}.nuspec",
                 f"{project_name}.targets",
                 "swig_csharp",
                 "Properties",
-            ):
-                remove_if_exist(rdkit_path_csharp_wrapper / p)
-            for _os in (
-                "nt",
-                "posix",
-            ):
-                remove_if_exist(rdkit_path_csharp_wrapper / _os)
+            ] + list(typing.get_args(SupportedSystem)):
+                remove_if_exist(self.rdkit_csharp_wrapper_path / p)
             remove_if_exist(self.rdkit_path / "lib")
-            for _os in (
-                "nt",
-                "posix",
-            ):
+            for _os in typing.get_args(SupportedSystem):
                 for p in typing.get_args(CpuModel):
                     remove_if_exist(self.rdkit_path / f"build{_os}{p}CSharp")
         if self.config.freetype_path:
@@ -1022,10 +1010,10 @@ def main() -> None:
     parser.add_argument("--clean", default=False, action="store_true")
     args = parser.parse_args()
 
-    # only x64 is supported for POSIX
-    if os.name == "posix" and args.build_platform == "x86":
-        raise RuntimeError("x86 is not supported for POSIX system.")
-    if os.name == "posix" and (args.build_platform == "all" or not args.build_platform):
+    # x86 is supported only for Windows
+    if get_os() == "linux" and args.build_platform == "x86":
+        raise RuntimeError("x86 is not supported for Linux system.")
+    if get_os() == "linux" and (args.build_platform == "all" or not args.build_platform):
         args.build_platform = "x64"
 
     def path_from_arg_or_env(arg: Any, env: str) -> Optional[Path]:
@@ -1047,7 +1035,6 @@ def main() -> None:
         freetype_path=path_from_arg_or_env(args.freetype_dir, "FREETYPE_DIR"),
         cairo_path=path_from_arg_or_env(args.cairo_dir, "CAIRO_DIR"),
         swig_path=path_from_arg_or_env(None, "SWIG_DIR"),
-        number_of_processors=cast(int, get_value_from_env("NUMBER_OF_PROCESSORS", "1")),
         cairo_support=True,
         test_enabled=False,
     )
@@ -1056,11 +1043,10 @@ def main() -> None:
     try:
         if args.clean:
             NativeMaker(config).clean()
-        platforms = (
-            typing.get_args(CpuModel) if args.build_platform == "all" else (args.build_platform,)
-        )
-        for platform in platforms:
-            maker = NativeMaker(config, platform)
+        for cpu_model in (
+            typing.get_args(CpuModel) if args.build_platform == "all" else [args.build_platform]
+        ):
+            maker = NativeMaker(config, cpu_model)
             if args.build_freetype:
                 maker.make_freetype()
             if args.build_zlib:
@@ -1074,7 +1060,7 @@ def main() -> None:
             if args.build_rdkit:
                 maker.build_rdkit()
         # if required x64 is used as platform
-        maker = NativeMaker(config, "x64")
+        maker = NativeMaker(config)
         if args.build_wrapper:
             maker.build_csharp_wrapper()
         if args.build_nuget:
