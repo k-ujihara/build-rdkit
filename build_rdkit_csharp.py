@@ -30,7 +30,7 @@ from typing import (
     Union,
     cast,
 )
-from xml.etree.ElementTree import SubElement
+from xml.etree.ElementTree import ElementTree, SubElement
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -180,6 +180,13 @@ def get_vs_ver() -> VisualStudioVersion:
 
 def get_msvc_internal_ver() -> MSVCInternalVersion:
     return _vs_to_msvc_internal_ver[get_vs_ver()]
+
+
+def load_msbuild_xml(path: PathLike) -> ElementTree:
+    ns = {"msbuild": "http://schemas.microsoft.com/developer/msbuild/2003"}
+    ET.register_namespace("", ns["msbuild"])
+    tree = ET.parse(path)
+    return tree
 
 
 class Config(NamedTuple):
@@ -624,9 +631,7 @@ class NativeMaker:
             for line in makefile_to_lines(makefile_win32):
                 match_and_add(pattern_c, c_files, line)
 
-            ns = {"msbuild": "http://schemas.microsoft.com/developer/msbuild/2003"}
-            ET.register_namespace("", ns["msbuild"])
-            tree = ET.parse(proj_file)
+            tree = load_msbuild_xml(proj_file)
             root = tree.getroot()
             item_group = SubElement(root, "ItemGroup")
             for name in c_files:
@@ -717,8 +722,8 @@ class NativeMaker:
             os.chdir(_curdir)
 
     @property
-    def path_RDKit2DotNet_csproj(self):
-        return self.rdkit_csharp_wrapper_path / "RDKit2DotNet.csproj"
+    def path_RDKit2DotNet_folder(self):
+        return self.rdkit_csharp_wrapper_path / "RDKit2DotNet"
 
     def build_csharp_wrapper(self) -> None:
         if os.name == "nt":
@@ -739,82 +744,70 @@ class NativeMaker:
 
     def _win_build_csharp_wrapper(self) -> None:
         self._patch_rdkit_swig_files()
-        os.makedirs(self.rdkit_csharp_wrapper_path / "Properties", exist_ok=True)
+        remove_if_exist(self.path_RDKit2DotNet_folder)
+        self.path_RDKit2DotNet_folder.mkdir()
         shutil.copy2(
-            self.this_path / "files" / "rdkit" / "AssemblyInfo.cs",
-            self.rdkit_csharp_wrapper_path / "Properties",
+            self.this_path / "files" / "rdkit" / "RDKit2DotNet.csproj",
+            self.path_RDKit2DotNet_folder,
         )
-        path_AssemblyInfo_cs = self.rdkit_csharp_wrapper_path / "Properties" / "AssemblyInfo.cs"
+        path_RDKit2DotNet_csproj = self.path_RDKit2DotNet_folder / "RDKit2DotNet.csproj"
+        rdkit_dotnetwrap_version = self.get_version_for_rdkit_dotnetwrap()
         replace_file_string(
-            path_AssemblyInfo_cs,
+            path_RDKit2DotNet_csproj,
             [
                 (
-                    '\\[assembly\\s*\\:\\s*AssemblyVersion\\(\\"\\d+\\.\\d+\\.\\d+\\.\\d+\\"\\)\\]',
-                    f'[assembly: AssemblyVersion("{self.get_version_for_rdkit_dotnetwrap()}")]',
+                    r"\<AssemblyVersion\>\d+\.\d+\.\d+\.\d+\<\/AssemblyVersion\>",
+                    f"<AssemblyVersion>{rdkit_dotnetwrap_version}</AssemblyVersion>",
                 ),
                 (
-                    '\\[assembly\\s*\\:\\s*AssemblyFileVersion\\(\\"0\\.0\\.0\\.0\\"\\)\\]',
-                    f'[assembly: AssemblyFileVersion("{self.get_version_for_rdkit_dotnetwrap()}")]',
+                    r"\<FileVersion\>\d+\.\d+\.\d+\.\d+\<\/FileVersion\>",
+                    f"<FileVersion>{rdkit_dotnetwrap_version}</FileVersion>",
                 ),
             ],
         )
-        # get_version_for_rdkit_dotnetwrap
-        make_or_restore_bak(self.path_RDKit2DotNet_csproj)
-        ns = {"msbuild": "http://schemas.microsoft.com/developer/msbuild/2003"}
-        ET.register_namespace("", ns["msbuild"])
-        tree = ET.parse(self.path_RDKit2DotNet_csproj)
-        XPATH_CONTENT_RDFUNC_DLL = "msbuild:Content[@Include='RDKFuncs.dll']"
-        item_group = tree.find(f"./msbuild:ItemGroup/{XPATH_CONTENT_RDFUNC_DLL}/..", ns)
-        if not item_group:
-            raise ValueError(
-                "<Content Include='RDKFuncs.dll' /> is not found"
-                + f" in {self.path_RDKit2DotNet_csproj}."
-            )
-        content = item_group.find(XPATH_CONTENT_RDFUNC_DLL, ns)
-        assert content
-        item_group.remove(content)
-        elm_assembly_info = SubElement(item_group, "Compile")
-        elm_assembly_info.attrib["Include"] = "Properties\\AssemblyInfo.cs"
-        for cpu_model in typing.get_args(CpuModel):
-            for filename in glob.glob(
-                str(self.rdkit_csharp_wrapper_path / os.name / cpu_model / "*.dll")
-            ):
-                basename = os.path.basename(filename)
-                content = SubElement(item_group, "Content")
-                content.attrib["Include"] = f"{os.name}\\\\{cpu_model}\\\\{basename}"
-                copy_to_output_directory = SubElement(content, "CopyToOutputDirectory")
-                copy_to_output_directory.text = "PreserveNewest"
 
+        tree = load_msbuild_xml(path_RDKit2DotNet_csproj)
         project = tree.getroot()
+
         property_group = SubElement(project, "PropertyGroup")
         sign_assembly = SubElement(property_group, "SignAssembly")
         sign_assembly.text = "true"
         assembly_originator_key_file = SubElement(property_group, "AssemblyOriginatorKeyFile")
         assembly_originator_key_file.text = "rdkit2dotnet.snk"
-        tree.write(self.path_RDKit2DotNet_csproj, "utf-8", True)
 
-        for src, dst in (
-            (
-                self.this_path / "files" / "rdkit" / "RDKitCSharpTest.csproj",
-                self.rdkit_csharp_wrapper_path / "RDKitCSharpTest",
-            ),
-            (
-                self.this_path / "files" / "rdkit" / "rdkit2dotnet.snk",
-                self.rdkit_csharp_wrapper_path,
-            ),
-            (
-                self.this_path / "files" / "rdkit" / "RDKit2DotNet.sln",
-                self.rdkit_csharp_wrapper_path,
-            ),
-        ):
-            shutil.copy2(src, dst)
+        # below is only for convenience to run test project
+        item_group = SubElement(project, "ItemGroup")
+        for cpu_model in typing.get_args(CpuModel):
+            for filename in glob.glob(
+                str(self.rdkit_csharp_wrapper_path / os.name / cpu_model / "*.dll")
+            ):
+                basename = os.path.basename(filename)
+                content = SubElement(item_group, "None")
+                content.attrib["Include"] = f"..\\\\{os.name}\\\\{cpu_model}\\\\{basename}"
+                content.attrib["Link"] = f"{os.name}\\\\{cpu_model}\\\\{basename}"
+                copy_to_output_directory = SubElement(content, "CopyToOutputDirectory")
+                copy_to_output_directory.text = "PreserveNewest"
 
-        print(f"Solution file '{self.rdkit_csharp_wrapper_path / 'RDKit2DotNet.sln'}' is created.")
+        tree.write(path_RDKit2DotNet_csproj, "utf-8", True)
+
+        path_rdkit_files = self.this_path / "files" / "rdkit"
+        shutil.copy2(path_rdkit_files / "rdkit2dotnet.snk", self.path_RDKit2DotNet_folder)
+        remove_if_exist(self.rdkit_csharp_wrapper_path / "RDKit2DotNetTest")
+        shutil.copytree(
+            path_rdkit_files / "RDKit2DotNetTest",
+            self.rdkit_csharp_wrapper_path / "RDKit2DotNetTest",
+        )
+        shutil.copy2(path_rdkit_files / "RDKit2DotNet.sln", self.rdkit_csharp_wrapper_path)
+
+        logging.info(f"{self.rdkit_csharp_wrapper_path / 'RDKit2DotNet.sln'} is created.")
 
         _pushd_build_wrapper = os.getcwd()
         try:
-            os.chdir(self.rdkit_csharp_wrapper_path)
-            self.run_msbuild("RDKit2DotNet.csproj", "AnyCPU")
+            os.chdir(self.path_RDKit2DotNet_folder)
+            call_subprocess(["dotnet", "restore"])
+            call_subprocess(
+                ["MSBuild", "RDKit2DotNet.csproj", "/t:Build", "/p:Configuration=Release"]
+            )
         finally:
             os.chdir(_pushd_build_wrapper)
 
@@ -868,7 +861,7 @@ class NativeMaker:
             ],
         )
 
-        def os_name_python_to_dotnet(name: str) -> str:
+        def os_name_to_nuget(name: str) -> str:
             if name == "nt":
                 return "win"
             if name == "posix":
@@ -881,7 +874,7 @@ class NativeMaker:
                 for dll_basename in dll_basenames_dic[_os][cpu_model]:
                     nuspec_dlls_spec.append(
                         f'<file src="{_os}/{cpu_model}/{dll_basename}" '
-                        f'target="runtimes/{os_name_python_to_dotnet(_os)}-{cpu_model}/native" />\n'
+                        f'target="runtimes/{os_name_to_nuget(_os)}-{cpu_model}/native" />\n'
                     )
 
         replace_file_string(nuspec_file, [("\\<nativefiles\\s*\\/\\>", "".join(nuspec_dlls_spec))])
@@ -906,7 +899,7 @@ class NativeMaker:
                 for dllname in dll_basenames_dic[_os][cpu_model]:
                     targets_dlls_spec.append(
                         '<None Include="$(MSBuildThisFileDirectory)'
-                        f'../runtimes/{os_name_python_to_dotnet(_os)}-{cpu_model}/native/{dllname}">\\n'
+                        f'../runtimes/{os_name_to_nuget(_os)}-{cpu_model}/native/{dllname}">\\n'
                     )
                     targets_dlls_spec.append(f"<Link>{dllname}</Link>\\n")
                     targets_dlls_spec.append(
@@ -924,7 +917,7 @@ class NativeMaker:
                 for dllname in dll_basenames_dic[_os][cpu_model]:
                     targets_dlls_spec.append(
                         f'<None Include="$(MSBuildThisFileDirectory)'
-                        f'../runtimes/{os_name_python_to_dotnet(_os)}-{cpu_model}/native/{dllname}">\\n'
+                        f'../runtimes/{os_name_to_nuget(_os)}-{cpu_model}/native/{dllname}">\\n'
                     )
                     targets_dlls_spec.append(f"<Link>{cpu_model}/{dllname}</Link>\\n")
                     targets_dlls_spec.append(
@@ -991,7 +984,7 @@ class NativeMaker:
         if self.config.cairo_path:
             remove_if_exist(self.cairo_path / "vc2017")
         for path in (
-            self.path_RDKit2DotNet_csproj,
+            self.path_RDKit2DotNet_folder,
             self.path_GraphMolCSharp_i,
             self.path_MolDraw2D_i,
         ):

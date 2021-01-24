@@ -20,8 +20,8 @@
   </metadata>
   <files>
     <file src="RDKit.DotNetWrap.targets" target="build" />
-    <file src="bin/Release/RDKit2DotNet.dll" target="lib/net40" />
-    <file src="bin/Release/RDKit2DotNet.dll" target="lib/netstandard2.0" />
+    <file src="RDKit2DotNet/bin/Release/net40/RDKit2DotNet.dll" target="lib/net40" />
+    <file src="RDKit2DotNet/bin/Release/netstandard2.0/RDKit2DotNet.dll" target="lib/netstandard2.0" />
 	<nativefiles />
   </files>
 </package>

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net40</TargetFrameworks>
+    <PackageId>RDKit2DotNet</PackageId>
+    <Authors>Kazuya Ujihara</Authors>
+    <Product>RDKit2DotNet</Product>
+    <Company />
+    <Description>RDKit .NET wrapper</Description>
+    <PackageLicenseFile>license.txt</PackageLicenseFile>
+    <PackageProjectUrl>https://github.com/kazuyaujihara/build-rdkit</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/kazuyaujihara/build-rdkit</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\swig_csharp\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\..\..\license.txt">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
+  </ItemGroup>
+
+</Project>
