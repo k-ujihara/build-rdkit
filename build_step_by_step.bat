@@ -14,6 +14,9 @@ python .\build_rdkit_csharp.py --build_cairo --build_platform all
 if errorlevel 1 goto :ERROREND
 python .\build_rdkit_csharp.py --build_rdkit --build_platform all
 if errorlevel 1 goto :ERROREND
+@rem wsl sudo hwclock -s
+wsl bash build_rdkit.sh
+if errorlevel 1 goto :ERROREND
 python .\build_rdkit_csharp.py --build_wrapper
 if errorlevel 1 goto :ERROREND
 python .\build_rdkit_csharp.py --build_nuget

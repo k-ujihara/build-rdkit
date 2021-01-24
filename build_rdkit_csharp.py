@@ -197,6 +197,7 @@ class Config(NamedTuple):
     minor_version: int = 1
     cairo_support: bool = False
     swig_patch_enabled: bool = True
+    test_enabled: bool = False
 
 
 class NativeMaker:
@@ -334,6 +335,9 @@ class NativeMaker:
         return re.sub(r".*(\d+\.\d+\.\d+)", r"\1", str(self.cairo_path))
 
     def _get_cmake_rdkit_cmd_line(self) -> List[str]:
+        def f_test():
+            return "ON" if self.config.test_enabled else "OFF"
+
         args = [f"{str(self.rdkit_path)}"]
         args += self.g_option_of_cmake
         args += [
@@ -366,7 +370,7 @@ class NativeMaker:
             ]
         args += [
             "-DRDK_INSTALL_INTREE=OFF",
-            "-DRDK_BUILD_CPP_TESTS=OFF",
+            f"-DRDK_BUILD_CPP_TESTS={f_test()}",
             "-DRDK_USE_BOOST_REGEX=ON",
             "-DRDK_BUILD_COORDGEN_SUPPORT=ON",
             # FIXME: Error can happen when the next value is ON on Linux system.
@@ -385,7 +389,7 @@ class NativeMaker:
             args += [
                 "-DRDK_SWIG_STATIC=OFF",
                 "-DRDK_INSTALL_STATIC_LIBS=OFF",
-                "-DRDK_BUILD_TEST_GZIP=OFF",
+                f"-DRDK_BUILD_TEST_GZIP={f_test()}",
                 "-DRDK_USE_URF=ON",
             ]
             if os.name == "nt":
@@ -815,13 +819,21 @@ class NativeMaker:
             os.chdir(_pushd_build_wrapper)
 
     def build_nuget_package(self) -> None:
-        dll_basenames_dic: Dict[str, List[str]] = dict()
-        for cpu_model in typing.get_args(CpuModel):
-            dlls_path = self.rdkit_csharp_wrapper_path / cpu_model
-            dll_basenames: List[str] = []
-            for filename in glob.glob(str(dlls_path / "*.dll")):
-                dll_basenames.append(os.path.basename(filename))
-            dll_basenames_dic[cpu_model] = dll_basenames
+        dll_basenames_dic: Dict[str, Dict[str, List[str]]] = dict()
+
+        for _os in ["nt", "posix"]:
+            if _os not in dll_basenames_dic:
+                dll_basenames_dic[_os] = dict()
+            for cpu_model in typing.get_args(CpuModel):
+                dlls_path = self.rdkit_csharp_wrapper_path / _os / cpu_model
+                dll_basenames: List[str] = []
+                for filename in glob.glob(str(dlls_path / "*.*")):
+                    dll_basenames.append(os.path.basename(filename))
+                dll_basenames_dic[_os][cpu_model] = dll_basenames
+        assert dll_basenames_dic["nt"]["x86"]
+        assert dll_basenames_dic["nt"]["x64"]
+        assert dll_basenames_dic["posix"]["x64"]
+        assert not dll_basenames_dic["posix"]["x86"]
 
         # Prepare RDKit2DotNet.nuspec
 
@@ -856,12 +868,21 @@ class NativeMaker:
             ],
         )
 
+        def os_name_python_to_dotnet(name: str) -> str:
+            if name == "nt":
+                return "win"
+            if name == "posix":
+                return "linux"
+            raise ValueError
+
         nuspec_dlls_spec = []
-        for cpu_model in typing.get_args(CpuModel):
-            for dll_basename in dll_basenames_dic[cpu_model]:
-                nuspec_dlls_spec.append(
-                    f'<file src="{cpu_model}/{dll_basename}" target="runtimes/win-{cpu_model}/native" />\n'  # NOQA
-                )
+        for _os in ["nt", "posix"]:
+            for cpu_model in typing.get_args(CpuModel):
+                for dll_basename in dll_basenames_dic[_os][cpu_model]:
+                    nuspec_dlls_spec.append(
+                        f'<file src="{_os}/{cpu_model}/{dll_basename}" '
+                        f'target="runtimes/{os_name_python_to_dotnet(_os)}-{cpu_model}/native" />\n'
+                    )
 
         replace_file_string(nuspec_file, [("\\<nativefiles\\s*\\/\\>", "".join(nuspec_dlls_spec))])
 
@@ -869,34 +890,47 @@ class NativeMaker:
             self.this_path / "files" / "rdkit" / f"{project_name}.targets",
             self.rdkit_csharp_wrapper_path,
         )
+
+        non_net = (
+            "!$(TargetFramework.Contains('netstandard')) "
+            "And !$(TargetFramework.Contains('netcoreapp')) "
+            "And !$(TargetFramework.Contains('net5'))"
+        )
+
         targets_dlls_spec: List[str] = []
-        for cpu_model in typing.get_args(CpuModel):
-            targets_dlls_spec.append(
-                f"<ItemGroup Condition=\" '$(Platform)' == '{cpu_model}' \">\\n"
-            )
-            for dllname in dll_basenames_dic[cpu_model]:
+        for _os in ["nt"]:
+            for cpu_model in typing.get_args(CpuModel):
                 targets_dlls_spec.append(
-                    f'<None Include="$(MSBuildThisFileDirectory)../runtimes/win-{cpu_model}/native/{dllname}">\\n'  # NOQA
+                    f"<ItemGroup Condition=\"{non_net} And '$(Platform)' == '{cpu_model}' \">\\n"
                 )
-                targets_dlls_spec.append(f"<Link>{dllname}</Link>\\n")
-                targets_dlls_spec.append(
-                    "<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>\\n"
-                )
-                targets_dlls_spec.append("</None>\\n")
-            targets_dlls_spec.append("</ItemGroup>\\n")
+                for dllname in dll_basenames_dic[_os][cpu_model]:
+                    targets_dlls_spec.append(
+                        '<None Include="$(MSBuildThisFileDirectory)'
+                        f'../runtimes/{os_name_python_to_dotnet(_os)}-{cpu_model}/native/{dllname}">\\n'
+                    )
+                    targets_dlls_spec.append(f"<Link>{dllname}</Link>\\n")
+                    targets_dlls_spec.append(
+                        "<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>\\n"
+                    )
+                    targets_dlls_spec.append("</None>\\n")
+                targets_dlls_spec.append("</ItemGroup>\\n")
 
-        targets_dlls_spec.append("<ItemGroup Condition=\" '$(Platform)' == 'AnyCPU' \">\\n")
+        targets_dlls_spec.append(
+            f"<ItemGroup Condition=\"{non_net} And '$(Platform)' == 'AnyCPU' \">\\n"
+        )
 
-        for cpu_model in typing.get_args(CpuModel):
-            for dllname in dll_basenames_dic[cpu_model]:
-                targets_dlls_spec.append(
-                    f'<None Include="$(MSBuildThisFileDirectory)../runtimes/win-{cpu_model}/native/{dllname}">\\n'  # NOQA
-                )
-                targets_dlls_spec.append(f"<Link>{cpu_model}/{dllname}</Link>\\n")
-                targets_dlls_spec.append(
-                    "<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>\\n"
-                )
-                targets_dlls_spec.append("</None>\\n")
+        for _os in ["nt"]:
+            for cpu_model in typing.get_args(CpuModel):
+                for dllname in dll_basenames_dic[_os][cpu_model]:
+                    targets_dlls_spec.append(
+                        f'<None Include="$(MSBuildThisFileDirectory)'
+                        f'../runtimes/{os_name_python_to_dotnet(_os)}-{cpu_model}/native/{dllname}">\\n'
+                    )
+                    targets_dlls_spec.append(f"<Link>{cpu_model}/{dllname}</Link>\\n")
+                    targets_dlls_spec.append(
+                        "<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>\\n"
+                    )
+                    targets_dlls_spec.append("</None>\\n")
 
         targets_dlls_spec.append("</ItemGroup>")
         replace_file_string(
@@ -906,7 +940,14 @@ class NativeMaker:
         _curr_dir = os.curdir
         os.chdir(self.rdkit_csharp_wrapper_path)
         try:
-            cmd = f'nuget pack "{project_name}.nuspec" -Prop Configuration=Release -IncludeReferencedProjects'  # NOQA
+            cmd = [
+                "nuget",
+                "pack",
+                f'"{project_name}.nuspec"',
+                "-Prop",
+                "Configuration=Release",
+                "-IncludeReferencedProjects",
+            ]
             call_subprocess(cmd)
         finally:
             os.chdir(_curr_dir)
@@ -1015,6 +1056,7 @@ def main() -> None:
         swig_path=path_from_arg_or_env(None, "SWIG_DIR"),
         number_of_processors=cast(int, get_value_from_env("NUMBER_OF_PROCESSORS", "1")),
         cairo_support=True,
+        test_enabled=False,
     )
 
     curr_dir = os.getcwd()

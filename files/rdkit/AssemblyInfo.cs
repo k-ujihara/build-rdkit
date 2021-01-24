@@ -1,12 +1,12 @@
 ﻿using System.Reflection;
 using System.Runtime.InteropServices;
 
-[assembly: AssemblyTitle("RDKit .NET wrapper")]
-[assembly: AssemblyDescription("RDKit wrapper for .NET Framework")]
+[assembly: AssemblyTitle("RDKit2DotNet")]
+[assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Kazuya Ujihara")]
+[assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("RDKit2DotNet")]
-[assembly: AssemblyCopyright("Copyright © Kazuya Ujihara 2021")]
+[assembly: AssemblyCopyright("Copyright © 2021")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 [assembly: ComVisible(false)]
