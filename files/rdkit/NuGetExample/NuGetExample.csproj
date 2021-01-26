@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net5.0</TargetFramework>
+    <Platforms>AnyCPU;x64;x86</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\RDKit2DotNetTest\Program.cs" Link="Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RDKit.DotNetWrap" Version="0.2020093.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Data\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\RDKit2DotNetTest\Data\5ht3ligs.sdf" Link="Data\5ht3ligs.sdf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\RDKit2DotNetTest\Data\5ht3ligs.sdf_cdk.index" Link="Data\5ht3ligs.sdf_cdk.index">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\RDKit2DotNetTest\Data\actives_5ht3.sdf" Link="Data\actives_5ht3.sdf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\RDKit2DotNetTest\Data\actives_5ht3.sdf.gz" Link="Data\actives_5ht3.sdf.gz">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\RDKit2DotNetTest\Data\input.mol" Link="Data\input.mol">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

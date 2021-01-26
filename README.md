@@ -17,7 +17,7 @@
   - [CMAKE 3.12.18081601-MSVC_2](https://cmake.org/)
   - [SWIG 4.0.2](http://www.swig.org/)
   - [NuGet 5.3.1](https://nuget.org)
-  - Ubuntu 18.4 on WSL2
+  - Ubuntu 20.04.1 LTS on WSL2
   - Visual Studio 2019
 
 ## How to Build
@@ -25,10 +25,10 @@
 ### Preparation
 
 - Use Windows 10 (x64).
-- Install Ubuntu 18.4 on WSL2 and install dotnet, boost, cairo, cmake, and swig.
+- Install Ubuntu 18.4 on WSL2 and install `dotnet`, `boost`, `cairo`, `cmake`, and `swig`.
 - Install Visual Studio 2019 enabling C++, C&#35; and CMAKE.
 - Install Python.
-- Clone this repository to some directory. A name of the directory including path should be short. It is highly recommended to place it under 'C:\' folder.
+- Clone this repository to some directory. A name of the directory including path should be short. It is highly recommended to place it under 'C:\'.
 - Download the following source archives and extract them here.
   - [RDKit](hhttps://github.com/rdkit/rdkit/) to `rdkit-Release_####_##_#`.
   - [Eigen3](http://eigen.tuxfamily.org/) to `eigen-#.#.#`.
@@ -63,7 +63,7 @@
 - Execute `python .\build_rdkit_csharp.py --build_libpng --build_platform all` to make libpng.
 - Execute `python .\build_rdkit_csharp.py --build_pixman --build_platform all` to make pixman.
 - Execute `python .\build_rdkit_csharp.py --build_cairo --build_platform all` to make cairo.
-- Execute `python .\build_rdkit_csharp.py --build_rdkit --build_platform all` to patch RDKit and make it.
-- Execute `python .\build_rdkit_csharp.py --build_wrapper` to make rdkit .NET wrapper and patch it.
-- C&#35; project file is created in `rdkit-Release_####_##_#/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet.csproj`.
-- Execute `python .\build_rdkit_csharp.py --build_nuget` to make NuGet package.
+- Execute `python .\build_rdkit_csharp.py --build_rdkit --build_platform all` to make RDKit for Windows.
+- Execute `wsl bash build_rdkit.sh` to make RDKit for Linux.
+- Execute `python .\build_rdkit_csharp.py --build_wrapper` to make RDKit .NET wrapper.
+- Execute `python .\build_rdkit_csharp.py --build_nuget` to make NuGet package, which includes both Windows and Linux versions.

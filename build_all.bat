@@ -9,7 +9,7 @@ python .\build_rdkit_csharp.py --build_freetype --build_zlib --build_libpng --bu
 wsl bash build_rdkit.sh
 @if errorlevel 1 goto :ERROREND
 
-python .\build_rdkit_csharp.py  --build_wrapper --build_nuget --build_platform all
+python .\build_rdkit_csharp.py  --build_wrapper --build_nuget
 @if errorlevel 1 goto :ERROREND
 
 @goto :END
@@ -19,7 +19,7 @@ python .\build_rdkit_csharp.py  --build_wrapper --build_nuget --build_platform a
 exit /b 1
 
 :CL_NOT_FOUND
-@echo cl is not found. Execute 'Developer Command Prompt for VS 2017' first.
+@echo cl is not found. Execute 'Developer Command Prompt for VS 2019' first.
 exit /b 1
 
 :END

@@ -2,13 +2,17 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>net40</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\RDKit2DotNet\RDKit2DotNet.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\RDKit2DotNetTest\Program.cs" Link="Program.cs" />
+  </ItemGroup>
+  
   <ItemGroup>
     <None Update="Data\5ht3ligs.sdf">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -6,6 +6,7 @@ namespace GraphMolWrap
 {
     partial class RDKFuncsPINVOKE
     {
+#if NETFRAMEWORK
         private const string ModuleName = "RDKFuncs";
 
         [System.Security.SuppressUnmanagedCodeSecurity]
@@ -14,43 +15,41 @@ namespace GraphMolWrap
             [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]
             internal static extern bool SetDllDirectory(string lpPathName);
         }
+#endif
 
         internal static void LoadDll()
         {
+#if NETFRAMEWORK    
             var os = Environment.OSVersion;
             switch (os.Platform)
             {
                 case PlatformID.Win32NT:
                     const string DllFileName = ModuleName + ".dll";
-                    var _subdir = Environment.Is64BitProcess ? "x64" : "x86";
+                    var cpu = Environment.Is64BitProcess ? "x64" : "x86";
                     var executingAsm = System.Reflection.Assembly.GetExecutingAssembly();
-                    foreach (var ss in new[] { null, "nt"})
+                    foreach (var subdir in new[] {
+                        cpu, 
+                        Path.Combine("runtimes", $"win-{cpu}", "native"),
+                    })
                     {
-                        var subdir = ss == null ? _subdir : Path.Combine("nt", _subdir);
+                        if (SetDllDirectoryIfFileExist(Path.GetDirectoryName(executingAsm.Location), subdir, DllFileName))
+                            break;
+                        // for ASP.NET
+                        var uri = new Uri(executingAsm.CodeBase);
+                        if (uri.Scheme == "file")
                         {
-                            var currPath = Path.GetDirectoryName(executingAsm.Location);
-                            if (SetDllDirectoryIfFileExist(currPath, subdir, DllFileName))
-                                goto L_Found;
-                        }
-                        {
-                            // for ASP.NET
-                            var uri = new Uri(executingAsm.CodeBase);
-                            if (uri.Scheme == "file")
-                            {
-                                var currPath = Path.GetDirectoryName(uri.AbsolutePath);
-                                if (SetDllDirectoryIfFileExist(currPath, subdir, DllFileName))
-                                    goto L_Found;
-                            }
+                            if (SetDllDirectoryIfFileExist(Path.GetDirectoryName(uri.AbsolutePath), subdir, DllFileName))
+                                break;
                         }
                     }
-                    
-                L_Found:
                     break;
                 default:
                     break;
             }
+#endif
         }
 
+#if NETFRAMEWORK
         /// <summary>
         /// SetDllDirectory if <paramref name="directoryName"/>/<paramref name="subdir"/>/<paramref name="dllName"/> or <paramref name="directoryName"/>/<paramref name="dllName"/>exists.
         /// </summary>
@@ -60,11 +59,8 @@ namespace GraphMolWrap
         /// <returns><see langword="true"/> if file exists and set it.</returns>
         private static bool SetDllDirectoryIfFileExist(string directoryName, string subdir, string dllName)
         {
-            if (subdir != null)
-            {
-                if (SetDllDirectoryIfFileExist(Path.Combine(directoryName, subdir), dllName))
-                    return true;
-            }
+            if (SetDllDirectoryIfFileExist(Path.Combine(directoryName, subdir), dllName))
+                return true;
 
             if (SetDllDirectoryIfFileExist(directoryName, dllName))
                 return true;
@@ -88,6 +84,7 @@ namespace GraphMolWrap
                 return true;
             }
             return false;
-        }        
+        }
+#endif
     }
 }
