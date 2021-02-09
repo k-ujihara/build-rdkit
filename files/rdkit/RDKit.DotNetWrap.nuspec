@@ -14,13 +14,13 @@
     <copyright>Copyright © 2019-2021 Kazuya Ujihara</copyright>
     <tags>rdkit</tags>
     <dependencies>
-      <group targetFramework="net40"></group>
+      <group targetFramework="netcoreapp3.1"></group>
       <group targetFramework="netstandard2.0"></group>
     </dependencies>    
   </metadata>
   <files>
     <file src="RDKit.DotNetWrap.targets" target="build" />
-    <file src="RDKit2DotNet/bin/Release/net40/RDKit2DotNet.dll" target="lib/net40" />
+    <file src="RDKit2DotNet/bin/Release/netcoreapp3.1/RDKit2DotNet.dll" target="lib/netcoreapp3.1" />
     <file src="RDKit2DotNet/bin/Release/netstandard2.0/RDKit2DotNet.dll" target="lib/netstandard2.0" />
 	<nativefiles />
   </files>

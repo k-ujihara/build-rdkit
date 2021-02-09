@@ -1,6 +1,18 @@
-@echo off
+@where /Q python
+@if errorlevel 1 goto :PYTHONERROR
+@where /Q swig
+@if errorlevel 1 goto :SWIGERROR
+@goto :GOEXEC
+:PYTHONERROR
+@echo Python is not installed.
+goto :EXITERROR
+:SWIGERROR
+@echo SWIG is not installed.
+@goto :EXITERROR
+:EXITERROR
+@exit /b 1
 
-call custom-dir.bat
+:GOEXEC
 
 python .\build_rdkit_csharp.py --build_freetype --build_platform all
 if errorlevel 1 goto :ERROREND
@@ -15,7 +27,7 @@ if errorlevel 1 goto :ERROREND
 python .\build_rdkit_csharp.py --build_rdkit --build_platform all
 if errorlevel 1 goto :ERROREND
 @rem wsl sudo hwclock -s
-wsl bash build_rdkit.sh
+wsl python3 ./build_rdkit_csharp.py --build_rdkit
 if errorlevel 1 goto :ERROREND
 python .\build_rdkit_csharp.py --build_wrapper
 if errorlevel 1 goto :ERROREND

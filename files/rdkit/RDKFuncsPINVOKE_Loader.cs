@@ -6,8 +6,7 @@ namespace GraphMolWrap
 {
     partial class RDKFuncsPINVOKE
     {
-#if NETFRAMEWORK
-        private const string ModuleName = "RDKFuncs";
+        private const string DllBaseName = "RDKFuncs";
 
         [System.Security.SuppressUnmanagedCodeSecurity]
         internal static class UnsafeNativeMethods
@@ -15,21 +14,19 @@ namespace GraphMolWrap
             [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]
             internal static extern bool SetDllDirectory(string lpPathName);
         }
-#endif
 
         internal static void LoadDll()
         {
-#if NETFRAMEWORK    
             var os = Environment.OSVersion;
             switch (os.Platform)
             {
                 case PlatformID.Win32NT:
-                    const string DllFileName = ModuleName + ".dll";
+                    const string DllFileName = DllBaseName + ".dll";
                     var cpu = Environment.Is64BitProcess ? "x64" : "x86";
                     var executingAsm = System.Reflection.Assembly.GetExecutingAssembly();
                     foreach (var subdir in new[] {
-                        cpu, 
                         Path.Combine("runtimes", $"win-{cpu}", "native"),
+                        cpu,
                     })
                     {
                         if (SetDllDirectoryIfFileExist(Path.GetDirectoryName(executingAsm.Location), subdir, DllFileName))
@@ -46,10 +43,8 @@ namespace GraphMolWrap
                 default:
                     break;
             }
-#endif
         }
 
-#if NETFRAMEWORK
         /// <summary>
         /// SetDllDirectory if <paramref name="directoryName"/>/<paramref name="subdir"/>/<paramref name="dllName"/> or <paramref name="directoryName"/>/<paramref name="dllName"/>exists.
         /// </summary>
@@ -85,6 +80,5 @@ namespace GraphMolWrap
             }
             return false;
         }
-#endif
     }
 }

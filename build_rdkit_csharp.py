@@ -3,8 +3,8 @@
 Notes:
     This is tested for rdkit-Release_2019.09.1 and 2020.09.1
 """
-
 import argparse
+import configparser
 import glob
 import logging
 import os
@@ -25,7 +25,6 @@ from typing import (
     List,
     Literal,
     Mapping,
-    NamedTuple,
     Optional,
     Sequence,
     Tuple,
@@ -204,21 +203,21 @@ def load_msbuild_xml(path: PathLike) -> ElementTree:
     return tree
 
 
-class Config(NamedTuple):
-    this_path: Optional[Path] = None
-    rdkit_path: Optional[Path] = None
-    boost_path: Optional[Path] = None
-    eigen_path: Optional[Path] = None
-    zlib_path: Optional[Path] = None
-    libpng_path: Optional[Path] = None
-    pixman_path: Optional[Path] = None
-    cairo_path: Optional[Path] = None
-    swig_path: Optional[Path] = None
-    freetype_path: Optional[Path] = None
-    minor_version: int = 1
-    cairo_support: bool = False
-    swig_patch_enabled: bool = True
-    test_enabled: bool = False
+class Config:
+    def __init__(self):
+        self.this_path: Optional[Path] = None
+        self.rdkit_path: Optional[Path] = None
+        self.boost_path: Optional[Path] = None
+        self.eigen_path: Optional[Path] = None
+        self.zlib_path: Optional[Path] = None
+        self.libpng_path: Optional[Path] = None
+        self.pixman_path: Optional[Path] = None
+        self.cairo_path: Optional[Path] = None
+        self.freetype_path: Optional[Path] = None
+        self.minor_version: int = 1
+        self.cairo_support: bool = False
+        self.swig_patch_enabled: bool = True
+        self.test_enabled: bool = False
 
 
 class NativeMaker:
@@ -387,11 +386,12 @@ class NativeMaker:
         _curdir = os.path.abspath(os.curdir)
         try:
             os.chdir(build_path)
+            zlib_lib = self.zlib_path / self.build_dir_name / "Release" / "zlib.lib"
             cmd = (
                 ["cmake", str(self.libpng_path)]
                 + list(self.g_option_of_cmake)
                 + [
-                    f'-DZLIB_LIBRARY="{self.zlib_path / self.build_dir_name / "Release" / "zlib.lib"}"',
+                    f'-DZLIB_LIBRARY="{zlib_lib}"',
                     f'-DZLIB_INCLUDE_DIR="{str(self.zlib_path)}"',
                     "-DPNG_SHARED=ON",
                     "-DPNG_STATIC=OFF",
@@ -534,14 +534,13 @@ class NativeMaker:
                 make_backup=True,
             )
         if self.config.cairo_support:
-            insert_line_after(
-                self.path_MolDraw2D_i,
-                {
-                    r"#include <GraphMol/MolDraw2D/MolDraw2DSVG.h>": r"#include <GraphMol/MolDraw2D/MolDraw2DCairo.h>",  # NOQA
-                    r"%include <GraphMol/MolDraw2D/MolDraw2DSVG.h>": r"%include <GraphMol/MolDraw2D/MolDraw2DCairo.h>",  # NOQA
-                },
-                make_backup=True,
-            )
+            _svg_h = "<GraphMol/MolDraw2D/MolDraw2DSVG.h>"
+            _cairo_h = "<GraphMol/MolDraw2D/MolDraw2DCairo.h>"
+            dic = {
+                f"#include {_svg_h}": f"#include {_cairo_h}",
+                f"%include {_svg_h}": f"%include {_cairo_h}",
+            }
+            insert_line_after(self.path_MolDraw2D_i, dic, make_backup=True)
 
     def _make_rdkit_cmake(self) -> None:
         cmd: List[str] = self._get_cmake_rdkit_cmd_line()
@@ -575,27 +574,29 @@ class NativeMaker:
                 f'-DZLIB_LIBRARIES="{zlib_lib_path}"',
                 f'-DZLIB_INCLUDE_DIRS="{self.zlib_path}"',
             ]
-        if self.config.cairo_path:
-            cairo_lib_path = (
-                self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.lib"
-            )
+        if self.config.cairo_support:
             args += [
-                f'-DCAIRO_INCLUDE_DIRS={self.cairo_path / "src"}',
-                f"-DCAIRO_LIBRARIES={cairo_lib_path}",
+                f"-DRDK_BUILD_CAIRO_SUPPORT={'ON' if self.config.cairo_support else 'OFF'}",
             ]
+            if self.config.cairo_path:
+                cairo_lib_path = (
+                    self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.lib"
+                )
+                args += [
+                    f'-DCAIRO_INCLUDE_DIRS={self.cairo_path / "src"}',
+                    f"-DCAIRO_LIBRARIES={cairo_lib_path}",
+                ]
         args += [
             "-DRDK_INSTALL_INTREE=OFF",
             f"-DRDK_BUILD_CPP_TESTS={f_test()}",
             "-DRDK_USE_BOOST_REGEX=ON",
             "-DRDK_BUILD_COORDGEN_SUPPORT=ON",
-            # FIXME: Error can happen when the next value is ON on Linux system.
-            "-DRDK_BUILD_MAEPARSER_SUPPORT=" + ("ON" if get_os() == "win" else "OFF"),
+            "-DRDK_BUILD_MAEPARSER_SUPPORT=ON",
             "-DRDK_OPTIMIZE_POPCNT=ON",
-            "-DRDK_BUILD_FREESASA_SUPPORT=OFF",
+            "-DRDK_BUILD_FREESASA_SUPPORT=ON",
             "-DRDK_BUILD_THREADSAFE_SSS=ON",
             "-DRDK_BUILD_INCHI_SUPPORT=ON",
             "-DRDK_BUILD_AVALON_SUPPORT=ON",
-            f"-DRDK_BUILD_CAIRO_SUPPORT={'ON' if self.config.cairo_support else 'OFF'}",
             "-DBoost_NO_BOOST_CMAKE=ON",
         ]
 
@@ -1039,17 +1040,6 @@ def main() -> None:
         "build_nuget",
     ):
         parser.add_argument(f"--{opt}", default=False, action="store_true")
-    for opt in (
-        "rdkit",
-        "boost",
-        "eigen",
-        "zlib",
-        "freetype",
-        "libpng",
-        "pixman",
-        "cairo",
-    ):
-        parser.add_argument(f"--{opt}_dir", type=str)
     parser.add_argument("--clean", default=False, action="store_true")
     args = parser.parse_args()
 
@@ -1059,28 +1049,11 @@ def main() -> None:
     if get_os() == "linux" and (args.build_platform == "all" or not args.build_platform):
         args.build_platform = "x64"
 
-    def path_from_arg_or_env(arg: Any, env: str) -> Optional[Path]:
-        if arg:
-            return Path(arg)
-        value = get_value_from_env(env)
-        return Path(value) if value else None
+    config_ini = configparser.ConfigParser()
+    config_ini.read("config.ini", encoding="utf-8")
+    default_config = config_ini["DEFAULT"]
 
-    config = Config(
-        minor_version=cast(int, get_value_from_env("MINOR_VERSION", "1")),
-        swig_patch_enabled=not args.disable_swig_patch,
-        this_path=here,
-        rdkit_path=path_from_arg_or_env(args.rdkit_dir, "RDKIT_DIR"),
-        boost_path=path_from_arg_or_env(args.boost_dir, "BOOST_DIR"),
-        eigen_path=path_from_arg_or_env(args.eigen_dir, "EIGEN_DIR"),
-        zlib_path=path_from_arg_or_env(args.zlib_dir, "ZLIB_DIR"),
-        libpng_path=path_from_arg_or_env(args.libpng_dir, "LIBPNG_DIR"),
-        pixman_path=path_from_arg_or_env(args.pixman_dir, "PIXMAN_DIR"),
-        freetype_path=path_from_arg_or_env(args.freetype_dir, "FREETYPE_DIR"),
-        cairo_path=path_from_arg_or_env(args.cairo_dir, "CAIRO_DIR"),
-        swig_path=path_from_arg_or_env(None, "SWIG_DIR"),
-        cairo_support=True,
-        test_enabled=False,
-    )
+    config = create_config(args, default_config)
 
     curr_dir = os.getcwd()
     try:
@@ -1110,6 +1083,41 @@ def main() -> None:
             maker.build_nuget_package()
     finally:
         os.chdir(curr_dir)
+
+
+def create_config(args: argparse.Namespace, config_info: Any):
+    def path_from_ini(env: str) -> Optional[Path]:
+        value = config_info.get(env)
+        if not value:
+            return None
+        path = Path(value)
+        if not path.is_absolute():
+            path = here / value
+        return path
+
+    def int_from_int(env: str, default: int) -> int:
+        value = config_info.get(env)
+        if not value:
+            return default
+        return int(value)
+
+    config = Config()
+    config.minor_version = int_from_int("MINOR_VERSION", 1)
+    config.swig_patch_enabled = not args.disable_swig_patch
+    config.this_path = here
+    config.rdkit_path = path_from_ini("RDKIT_DIR")
+    if get_os() == "win":
+        # These pathes are only for Windows.
+        config.boost_path = path_from_ini("BOOST_DIR")
+        config.zlib_path = path_from_ini("ZLIB_DIR")
+        config.libpng_path = path_from_ini("LIBPNG_DIR")
+        config.pixman_path = path_from_ini("PIXMAN_DIR")
+        config.freetype_path = path_from_ini("FREETYPE_DIR")
+        config.cairo_path = path_from_ini("CAIRO_DIR")
+    config.eigen_path = path_from_ini("EIGEN_DIR")
+    config.cairo_support = True
+    config.test_enabled = False
+    return config
 
 
 if __name__ == "__main__":
