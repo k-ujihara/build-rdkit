@@ -4,6 +4,9 @@
 - NuGet package is available at [https://www.nuget.org/packages/RDKit.DotNetWrap/](https://www.nuget.org/packages/RDKit.DotNetWrap/).
 
 - Example codes are in `RDKit2DotNet.Example` directory.
+- See [instruction to build application](tree/master/myApp).
+
+## How to Build
 
 - Registered NuGet package was built using the following versions.
   - [RDKit Release_2020_09_4](https://github.com/rdkit/rdkit/releases/tag/Release_2020_09_4)
@@ -19,8 +22,6 @@
   - [NuGet 5.3.1](https://nuget.org)
   - Ubuntu 20.04.1 LTS on WSL2
   - Visual Studio 2019
-
-## How to Build
 
 ### Preparation
 

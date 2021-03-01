@@ -17,6 +17,7 @@ import typing
 import xml.etree.ElementTree as ET
 from os import PathLike
 from pathlib import Path
+from subprocess import PIPE
 from typing import (
     Any,
     Collection,
@@ -402,7 +403,7 @@ class NativeMaker:
         finally:
             os.chdir(_curdir)
 
-    def vs15_proj_to_vs16(self, proj_file: Path) -> None:
+    def vs15_proj_to_vscurr(self, proj_file: Path) -> None:
         _V = "VCProjectVersion"
         _P = "PlatformToolset"
         replace_file_string(
@@ -428,7 +429,7 @@ class NativeMaker:
             proj_file = proj_dir / vcxproj
             shutil.copy2(files_dir / "config.h", self.pixman_path / "pixman")
 
-            self.vs15_proj_to_vs16(proj_file)
+            self.vs15_proj_to_vscurr(proj_file)
 
             makefile_win32 = self.pixman_path / "pixman" / "Makefile.win32"
             makefile_sources = self.pixman_path / "pixman" / "Makefile.sources"
@@ -473,7 +474,7 @@ class NativeMaker:
             shutil.copy2(files_dir / vcxproj, proj_dir)
             proj_file = proj_dir / vcxproj
             shutil.copy2(files_dir / "cairo-features.h", self.cairo_path / "src")
-            self.vs15_proj_to_vs16(proj_file)
+            self.vs15_proj_to_vscurr(proj_file)
             replace_file_string(
                 proj_file,
                 [
@@ -519,9 +520,9 @@ class NativeMaker:
         _curdir = os.path.abspath(os.curdir)
         os.chdir(self.rdkit_csharp_build_path)
         try:
-            self._patch_i_files()
-            self._make_rdkit_cmake()
-            self._build_rdkit_native()
+            # self._patch_i_files()
+            # self._make_rdkit_cmake()
+            # self._build_rdkit_native()
             self._copy_dlls()
         finally:
             os.chdir(_curdir)
@@ -652,30 +653,38 @@ class NativeMaker:
             raise RuntimeError
         files_to_copy.append(a)
 
+        if get_os() == "linux":
+            proc = subprocess.run(f"ldd {a}", shell=True, stdout=PIPE, text=True)
+            if proc.returncode != 0:
+                raise RuntimeError("Failed to execute ldd")
+            pat = re.compile(r" \/lib\/x86_64\-linux\-gnu\/([a-zA-Z_\-]+\.so(?:\.[0-9]+)*) ")
+            lib_path = Path("/usr/lib/x86_64-linux-gnu")
+            for name in re.findall(pat, proc.stdout, flags=0):
+                files_to_copy.append(lib_path / name)
+
         # DLLs of rdkit. Since 2020_09_1 submodules are separated.
         if self.get_rdkit_version() >= 2020091:
             if get_os() == "win":
-                a = self.rdkit_csharp_build_path / "bin" / "Release" / "*.dll"
+                lib_path = self.rdkit_csharp_build_path / "bin" / "Release"
+                for file_path in lib_path.glob("*.dll"):
+                    files_to_copy.append(file_path)
             elif get_os() == "linux":
-                a = (
-                    self.rdkit_csharp_build_path
-                    / "lib"
-                    / f"*.so.1.{self.get_version_for_rdkit().replace('_', '.')}"
-                )
+                lib_path = self.rdkit_csharp_build_path / "lib"
+                for file_path in lib_path.glob(f"*.so.1"):
+                    files_to_copy.append(file_path)
             else:
                 raise RuntimeError
-            for filename in glob.glob(str(a)):
-                files_to_copy.append(filename)
 
         # TODO: Copy libraries' so files to local.
         if get_os() == "win":
             # DLLs of boost.
-            for filename in glob.glob(str(self.boost_bin_path / "*.dll")):
-                if re.match(r".*\-vc\d\d\d\-mt\-x(32|64)\-\d_\d\d\.dll", filename):
+            for file_path in self.boost_bin_path.glob("*.dll"):
+                if re.match(r".*\-vc\d\d\d\-mt\-x(32|64)\-\d_\d\d\.dll", file_path.name):
                     # boost_python-vc###-mt-x##-#_##.dll is not needed.
-                    if not os.path.basename(filename).startswith("boost_python"):
-                        files_to_copy.append(filename)
+                    if not file_path.name.startswith("boost_python"):
+                        files_to_copy.append(file_path)
 
+        if get_os() == "win":
             # DLLs of fonttype.
             if self.config.cairo_support or self.get_rdkit_version() >= 2020091:
                 files_to_copy.append(
@@ -685,7 +694,6 @@ class NativeMaker:
                     / "Release"
                     / "freetype.dll"
                 )
-
             # DLLs of cairo.
             if self.config.cairo_support:
                 files_to_copy += [
