@@ -4,7 +4,7 @@
 - NuGet package is available at [https://www.nuget.org/packages/RDKit.DotNetWrap/](https://www.nuget.org/packages/RDKit.DotNetWrap/).
 
 - Example codes are in `RDKit2DotNet.Example` directory.
-- See [instruction to build application](tree/master/myApp).
+- See [instruction to build application](myApp).
 
 ## How to Build
 
