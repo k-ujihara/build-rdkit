@@ -12,7 +12,7 @@ bin/Release/net5.0/myApp
 for Windows
 ```bash
 dotnet build -c Release
-bin\\Release\\net5.0\\myApp.exe
+bin\Release\net5.0\myApp.exe
 ```
 
 Above prints below.

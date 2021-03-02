@@ -34,6 +34,8 @@ from typing import (
 )
 from xml.etree.ElementTree import ElementTree, SubElement
 
+_BUILD_STATIC_LIB = False
+
 logging.basicConfig(level=logging.DEBUG)
 project_name: str = "RDKit.DotNetWrap"
 
@@ -520,9 +522,9 @@ class NativeMaker:
         _curdir = os.path.abspath(os.curdir)
         os.chdir(self.rdkit_csharp_build_path)
         try:
-            # self._patch_i_files()
-            # self._make_rdkit_cmake()
-            # self._build_rdkit_native()
+            self._patch_i_files()
+            self._make_rdkit_cmake()
+            self._build_rdkit_native()
             self._copy_dlls()
         finally:
             os.chdir(_curdir)
@@ -599,18 +601,35 @@ class NativeMaker:
             "-DRDK_BUILD_INCHI_SUPPORT=ON",
             "-DRDK_BUILD_AVALON_SUPPORT=ON",
             "-DBoost_NO_BOOST_CMAKE=ON",
+            f"-DRDK_BUILD_TEST_GZIP={f_test()}",
         ]
 
         if self.get_rdkit_version() >= 2020091:
             # needs followings after 2020_09_1
             args += [
-                "-DRDK_SWIG_STATIC=OFF",
-                "-DRDK_INSTALL_STATIC_LIBS=OFF",
-                f"-DRDK_BUILD_TEST_GZIP={f_test()}",
                 "-DRDK_USE_URF=ON",
             ]
             if get_os() == "win":
-                args += ["-DRDK_INSTALL_DLLS_MSVC=ON"]
+                args += [
+                    "-DRDK_SWIG_STATIC=OFF",
+                    "-DRDK_INSTALL_STATIC_LIBS=OFF",
+                ]
+                if get_os() == "win":
+                    args += ["-DRDK_INSTALL_DLLS_MSVC=ON"]
+            if get_os() == "linux":
+                if _BUILD_STATIC_LIB:
+                    args += [
+                        "-DRDK_SWIG_STATIC=ON",
+                        "-DRDK_INSTALL_STATIC_LIBS=ON"
+                        "-DBOOST_LIBRARYDIR=/usr/lib/x86_64-linux-gnu",
+                        "-DBOOST_ROOT=/usr",
+                        "-DBoost_USE_STATIC_LIBS=ON",
+                    ]
+                else:
+                    args += [
+                        "-DRDK_SWIG_STATIC=OFF",
+                        "-DRDK_INSTALL_STATIC_LIBS=OFF",
+                    ]
         if self.get_rdkit_version() >= 2020091:
             # freetype supports starts from 2020_09_1
             if self.config.freetype_path:
