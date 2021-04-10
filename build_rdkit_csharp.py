@@ -525,9 +525,11 @@ class NativeMaker:
             self._patch_i_files()
             self._make_rdkit_cmake()
             self._build_rdkit_native()
-            self._copy_dlls()
         finally:
             os.chdir(_curdir)
+
+    def copy_rdkit_dlls(self) -> None:
+        self._copy_dlls()
 
     def _patch_i_files(self):
         if self.config.swig_patch_enabled:
@@ -1102,6 +1104,7 @@ def main() -> None:
                 maker.make_cairo()
             if args.build_rdkit:
                 maker.build_rdkit()
+                maker.copy_rdkit_dlls()
         # if required x64 is used as platform
         maker = NativeMaker(config)
         if args.build_wrapper:

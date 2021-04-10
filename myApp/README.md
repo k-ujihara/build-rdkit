@@ -10,7 +10,7 @@ bin/Release/net5.0/myApp
 ```
 
 for Windows
-```bash
+```bat
 dotnet build -c Release
 bin\Release\net5.0\myApp.exe
 ```
