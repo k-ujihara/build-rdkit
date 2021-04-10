@@ -9,7 +9,7 @@
 ## How to Build
 
 - Registered NuGet package was built using the following versions.
-  - [RDKit Release_2020_09_4](https://github.com/rdkit/rdkit/releases/tag/Release_2020_09_4)
+  - [RDKit Release_2021_03_1](https://github.com/rdkit/rdkit/releases/tag/Release_2021_03_1)
   - [Boost 1.74.0](https://sourceforge.net/projects/boost/files/boost-binaries/1.74.0/)
   - [Eigen 3.3.8](https://gitlab.com/libeigen/eigen/-/releases/3.3.8)
   - [Cairo 1.16.0](https://www.cairographics.org/releases/cairo-1.16.0.tar.xz)
@@ -57,7 +57,6 @@
 #### Step by Step
 
 - Open 'Developer Command Prompt for VS 2019'.
-- Execute `custom-dir.bat` to set up environment variables.
 - Execute `python .\build_rdkit_csharp.py --build_freetype` to make FreeType.
 - Execute `python .\build_rdkit_csharp.py --build_zlib` to make zlib.
 - Execute `python .\build_rdkit_csharp.py --build_libpng` to make libpng.
