@@ -48,26 +48,17 @@ SupportedSystem = Literal["win", "linux"]
 
 here = Path(__file__).parent.resolve()
 
-_platform_system_to_system: Mapping[str, SupportedSystem] = {
-    "Windows": "win",
-    "Linux": "linux",
-}
+_platform_system_to_system: Mapping[str, SupportedSystem] = {"Windows": "win", "Linux": "linux"}
 
 _vs_ver_to_cmake_option_catalog: Mapping[VisualStudioVersion, Mapping[CpuModel, Sequence[str]]] = {
-    "15.0": {"x86": ['-G"Visual Studio 15 2017"'], "x64": ['-G"Visual Studio 15 2017 Win64"'],},
+    "15.0": {"x86": ['-G"Visual Studio 15 2017"'], "x64": ['-G"Visual Studio 15 2017 Win64"']},
     "16.0": {
         "x86": ['-G"Visual Studio 16 2019"', "-AWin32"],
         "x64": ['-G"Visual Studio 16 2019"'],
     },
 }
-_platform_to_ms_form: Mapping[CpuModel, MSPlatform] = {
-    "x86": "Win32",
-    "x64": "x64",
-}
-_platform_to_address_model: Mapping[CpuModel, AddressModel] = {
-    "x86": 32,
-    "x64": 64,
-}
+_platform_to_ms_form: Mapping[CpuModel, MSPlatform] = {"x86": "Win32", "x64": "x64"}
+_platform_to_address_model: Mapping[CpuModel, AddressModel] = {"x86": 32, "x64": 64}
 _vs_to_msvc_internal_ver: Mapping[VisualStudioVersion, MSVCInternalVersion] = {
     "15.0": "14.1",
     "16.0": "14.2",
@@ -98,7 +89,7 @@ def make_or_restore_bak(filename: PathLike) -> None:
 
 
 def replace_file_string(
-    filename: PathLike, pattern_replace: Sequence[Tuple[str, str]], make_backup: bool = False,
+    filename: PathLike, pattern_replace: Sequence[Tuple[str, str]], make_backup: bool = False
 ):
     if make_backup:
         make_or_restore_bak(filename)
@@ -112,7 +103,7 @@ def replace_file_string(
 
 
 def insert_line_after(
-    filename: PathLike, insert_after: Mapping[str, str], make_backup: bool = False,
+    filename: PathLike, insert_after: Mapping[str, str], make_backup: bool = False
 ):
     if make_backup:
         make_or_restore_bak(filename)
@@ -221,12 +212,17 @@ class Config:
         self.cairo_support: bool = False
         self.swig_patch_enabled: bool = True
         self.test_enabled: bool = False
+        self.swig_csharp: bool = False
 
 
 class NativeMaker:
     def __init__(self, config: Config, build_platform: Optional[CpuModel] = None):
         self.build_platform: Optional[CpuModel] = build_platform
-        self.config = config
+        self._config: Config = config
+
+    @property
+    def config(self) -> Config:
+        return self._config
 
     @property
     def g_option_of_cmake(self) -> Sequence[str]:
@@ -238,6 +234,14 @@ class NativeMaker:
         raise RuntimeError
 
     @property
+    def swig_csharp(self) -> bool:
+        return self.config.swig_csharp
+
+    @property
+    def swig_enabled(self) -> bool:
+        return self.swig_csharp
+
+    @property
     def build_dir_name(self) -> str:
         assert self.build_platform
         return f"build{self.build_platform}"
@@ -245,7 +249,10 @@ class NativeMaker:
     @property
     def build_dir_name_for_csharp(self) -> str:
         assert self.build_platform
-        return f"build{get_os()}{self.build_platform}CSharp"
+        name = f"build{get_os()}{self.build_platform}"
+        if self.swig_csharp:
+            name += "CSharp"
+        return name
 
     @property
     def ms_build_platform(self) -> MSPlatform:
@@ -411,7 +418,7 @@ class NativeMaker:
         replace_file_string(
             proj_file,
             [
-                (f"\\<{_V}>15\\.0\\<\\/{_V}\\>", f"<{_V}>{get_vs_ver()}</{_V}>",),
+                (f"\\<{_V}>15\\.0\\<\\/{_V}\\>", f"<{_V}>{get_vs_ver()}</{_V}>"),
                 (
                     f"\\<{_P}\\>v141\\<\\/{_P}\\>",
                     f"<{_P}>v{get_msvc_internal_ver().replace('.', '')}</{_P}>",
@@ -480,11 +487,11 @@ class NativeMaker:
             replace_file_string(
                 proj_file,
                 [
-                    ("__CAIRODIR__", str(self.cairo_path).replace("\\", "\\\\"),),
-                    ("__LIBPNGDIR__", str(self.libpng_path).replace("\\", "\\\\"),),
-                    ("__ZLIBDIR__", str(self.zlib_path).replace("\\", "\\\\"),),
-                    ("__PIXMANDIR__", str(self.pixman_path).replace("\\", "\\\\"),),
-                    ("__FREETYPEDIR__", str(self.freetype_path).replace("\\", "\\\\"),),
+                    ("__CAIRODIR__", str(self.cairo_path).replace("\\", "\\\\")),
+                    ("__LIBPNGDIR__", str(self.libpng_path).replace("\\", "\\\\")),
+                    ("__ZLIBDIR__", str(self.zlib_path).replace("\\", "\\\\")),
+                    ("__PIXMANDIR__", str(self.pixman_path).replace("\\", "\\\\")),
+                    ("__FREETYPEDIR__", str(self.freetype_path).replace("\\", "\\\\")),
                 ],
             )
             self.run_msbuild(vcxproj)
@@ -532,20 +539,126 @@ class NativeMaker:
         self._copy_dlls()
 
     def _patch_i_files(self):
-        if self.config.swig_patch_enabled:
-            replace_file_string(
-                self.path_GraphMolCSharp_i,
-                [("boost::int32_t", "int32_t",), ("boost::uint32_t", "uint32_t",),],
-                make_backup=True,
-            )
+        dic: Dict[str, str]
+
+        if True:
+            dic = dict()
+            _line = r"%shared_ptr(RDKit::QueryOps)"
+            _insert = r"%shared_ptr(RDKit::MolBundle)" + "\n"
+            _insert += r"%shared_ptr(RDKit::FixedMolSizeMolBundle)"
+            dic.update({_line: _insert})
+            _line = r"%shared_ptr(RDKit::SmilesParseException)"
+            _insert = r"%shared_ptr(RDKit::MolPicklerException)"
+            dic.update({_line: _insert})
+            _line = r'%include "../QueryOps.i"'
+            _insert = r'%include "../MolBundle.i"'
+            dic.update({_line: _insert})
+            _line = r'%include "../Trajectory.i"'
+            _insert = r'%include "../MolStandardize.i"'
+            dic.update({_line: _insert})
+            _line = r'%include "../SubstanceGroup.i"'
+            _insert = r'%include "../MolEnumerator.i"'
+            dic.update({_line: _insert})
+            insert_line_after(self.path_GraphMolCSharp_i, dic, make_backup=True)
+            if self.config.swig_patch_enabled and self.get_rdkit_version() < 2021032:
+                replace_file_string(
+                    self.path_GraphMolCSharp_i,
+                    [("boost::int32_t", "int32_t"), ("boost::uint32_t", "uint32_t")],
+                    make_backup=False,  # backed up above
+                )
+
         if self.config.cairo_support:
+            dic = dict()
             _svg_h = "<GraphMol/MolDraw2D/MolDraw2DSVG.h>"
             _cairo_h = "<GraphMol/MolDraw2D/MolDraw2DCairo.h>"
-            dic = {
-                f"#include {_svg_h}": f"#include {_cairo_h}",
-                f"%include {_svg_h}": f"%include {_cairo_h}",
-            }
+            _line = f"#include {_svg_h}"
+            _insert = f"""
+#ifdef RDK_BUILD_CAIRO_SUPPORT
+#include {_cairo_h}
+#endif
+"""
+            dic.update({_line: _insert})
+            _line = f"%include {_svg_h}"
+            _insert = f"""
+#ifdef RDK_BUILD_CAIRO_SUPPORT
+%include {_cairo_h}
+#endif"
+"""
+            dic.update({_line: _insert})
+            _line = "%template(Int_Vect_Vect) std::vector<std::vector<int> >;"
+            _insert = """
+%template(UInt_Vect_Vect) std::vector<std::vector<unsigned int> >;
+%template(Double_Vect_Vect) std::vector<std::vector<double> >;  
+%template(Point3D_Const_Vect) std::vector<const RDGeom::Point3D *>;
+%template(Point3D_Val_Vect) std::vector<RDGeom::Point3D>;      
+"""
             insert_line_after(self.path_MolDraw2D_i, dic, make_backup=True)
+
+        if True:
+            dic = dict()
+            _line = r"  const MolDrawOptions &drawOptions() const { return options_; }"
+            _insert = (
+                r"void setDrawOptions(const RDKit::MolDrawOptions &opts) { drawOptions() = opts; }"
+            )
+            dic.update({_line: _insert})
+            path = self.rdkit_path / "Code" / "GraphMol" / "MolDraw2D" / "MolDraw2D.h"
+            insert_line_after(path, dic, make_backup=True)
+
+        if True:
+            dic = dict()
+            _line = r"SET(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_SOURCE_DIR}/swig_csharp )"
+            _insert = r"""
+if(RDK_BUILD_DESCRIPTORS3D)
+  SET(CMAKE_SWIG_FLAGS "-DRDK_BUILD_DESCRIPTORS3D" "-DRDK_HAS_EIGEN3" ${CMAKE_SWIG_FLAGS} )
+endif()
+if(RDK_BUILD_CAIRO_SUPPORT)
+  SET(CMAKE_SWIG_FLAGS "-DRDK_BUILD_CAIRO_SUPPORT" ${CMAKE_SWIG_FLAGS} )
+endif()
+"""
+            dic.update({_line: _insert})
+            path = self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper" / "CMakeLists.txt"
+            insert_line_after(path, dic, make_backup=True)
+
+            _line = r"#include <GraphMol/Descriptors/MolDescriptors.h>"
+            _insert = """
+#include <GraphMol/Descriptors/AtomFeat.h>
+#include <GraphMol/Descriptors/USRDescriptor.h>
+#include <GraphMol/Depictor/RDDepictor.h>
+#ifdef RDK_BUILD_DESCRIPTORS3D
+#include <GraphMol/Descriptors/MolDescriptors3D.h>
+#endif
+"""
+            dic.update({_line: _insert})
+            _line = r"%include <GraphMol/Descriptors/MQN.h>"
+            _insert = """
+%include <GraphMol/Descriptors/AUTOCORR2D.h>
+%include <GraphMol/Descriptors/AtomFeat.h>
+%include <GraphMol/Descriptors/USRDescriptor.h>
+%include <GraphMol/Depictor/RDDepictor.h>
+#ifdef RDK_HAS_EIGEN3
+%include <GraphMol/Descriptors/BCUT.h>
+#endif
+#ifdef RDK_BUILD_DESCRIPTORS3D
+%include <GraphMol/Descriptors/CoulombMat.h>
+%include <GraphMol/Descriptors/EEM.h>
+%include <GraphMol/Descriptors/PBF.h>
+%include <GraphMol/Descriptors/RDF.h>
+%include <GraphMol/Descriptors/MORSE.h>
+%include <GraphMol/Descriptors/WHIM.h>
+%include <GraphMol/Descriptors/GETAWAY.h>
+%include <GraphMol/Descriptors/AUTOCORR3D.h>
+%include <GraphMol/Descriptors/PMI.h>
+#endif
+"""
+            dic.update({_line: _insert})
+            path = self.rdkit_path / "Code" / "JavaWrappers" / "Descriptors.i"
+            insert_line_after(path, dic, make_backup=True)
+            dic = dict()
+            _line = r"#include <GraphMol/Descriptors/MQN.h>"
+            _insert = r"#include <GraphMol/Descriptors/BCUT.h>"
+            dic.update({_line: _insert})
+            path = self.rdkit_path / "Code" / "GraphMol" / "Descriptors" / "MolDescriptors.h"
+            insert_line_after(path, dic, make_backup=True)
 
     def _make_rdkit_cmake(self) -> None:
         cmd: List[str] = self._get_cmake_rdkit_cmd_line()
@@ -559,9 +672,9 @@ class NativeMaker:
 
         args = [f"{str(self.rdkit_path)}"]
         args += self.g_option_of_cmake
+        args += [f"-DRDK_BUILD_SWIG_WRAPPERS={'ON' if self.swig_enabled else 'OFF'}"]
         args += [
-            "-DRDK_BUILD_SWIG_WRAPPERS=ON",
-            "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON",
+            f"-DRDK_BUILD_SWIG_CSHARP_WRAPPER={'ON' if self.swig_csharp else 'OFF'}",
             "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF",
             "-DRDK_BUILD_PYTHON_WRAPPERS=OFF",
         ]
@@ -580,9 +693,7 @@ class NativeMaker:
                 f'-DZLIB_INCLUDE_DIRS="{self.zlib_path}"',
             ]
         if self.config.cairo_support:
-            args += [
-                f"-DRDK_BUILD_CAIRO_SUPPORT={'ON' if self.config.cairo_support else 'OFF'}",
-            ]
+            args += [f"-DRDK_BUILD_CAIRO_SUPPORT={'ON' if self.config.cairo_support else 'OFF'}"]
             if self.config.cairo_path:
                 cairo_lib_path = (
                     self.cairo_path / "vc2017" / self.ms_build_platform / "Release" / "cairo.lib"
@@ -592,11 +703,11 @@ class NativeMaker:
                     f"-DCAIRO_LIBRARIES={cairo_lib_path}",
                 ]
         args += [
-            "-DRDK_INSTALL_INTREE=OFF",
+            "-DRDK_INSTALL_INTREE=ON",
             f"-DRDK_BUILD_CPP_TESTS={f_test()}",
             "-DRDK_USE_BOOST_REGEX=ON",
             "-DRDK_BUILD_COORDGEN_SUPPORT=ON",
-            "-DRDK_BUILD_MAEPARSER_SUPPORT=ON",
+            # "-DRDK_BUILD_MAEPARSER_SUPPORT=ON",
             "-DRDK_OPTIMIZE_POPCNT=ON",
             "-DRDK_BUILD_FREESASA_SUPPORT=ON",
             "-DRDK_BUILD_THREADSAFE_SSS=ON",
@@ -608,14 +719,9 @@ class NativeMaker:
 
         if self.get_rdkit_version() >= 2020091:
             # needs followings after 2020_09_1
-            args += [
-                "-DRDK_USE_URF=ON",
-            ]
+            args += ["-DRDK_USE_URF=ON"]
             if get_os() == "win":
-                args += [
-                    "-DRDK_SWIG_STATIC=OFF",
-                    "-DRDK_INSTALL_STATIC_LIBS=OFF",
-                ]
+                args += ["-DRDK_SWIG_STATIC=OFF", "-DRDK_INSTALL_STATIC_LIBS=OFF"]
                 if get_os() == "win":
                     args += ["-DRDK_INSTALL_DLLS_MSVC=ON"]
             if get_os() == "linux":
@@ -628,10 +734,7 @@ class NativeMaker:
                         "-DBoost_USE_STATIC_LIBS=ON",
                     ]
                 else:
-                    args += [
-                        "-DRDK_SWIG_STATIC=OFF",
-                        "-DRDK_INSTALL_STATIC_LIBS=OFF",
-                    ]
+                    args += ["-DRDK_SWIG_STATIC=OFF", "-DRDK_INSTALL_STATIC_LIBS=OFF"]
         if self.get_rdkit_version() >= 2020091:
             # freetype supports starts from 2020_09_1
             if self.config.freetype_path:
@@ -665,23 +768,24 @@ class NativeMaker:
         files_to_copy: List[Union[str, PathLike]] = []
         a: Path
 
-        a = self.rdkit_csharp_build_path / "Code" / "JavaWrappers" / "csharp_wrapper"
-        if get_os() == "win":
-            a = a / "Release" / "RDKFuncs.dll"
-        elif get_os() == "linux":
-            a = a / "RDKFuncs.so"
-        else:
-            raise RuntimeError
-        files_to_copy.append(a)
+        if self.config.swig_csharp:
+            a = self.rdkit_csharp_build_path / "Code" / "JavaWrappers" / "csharp_wrapper"
+            if get_os() == "win":
+                a = a / "Release" / "RDKFuncs.dll"
+            elif get_os() == "linux":
+                a = a / "RDKFuncs.so"
+            else:
+                raise RuntimeError
+            files_to_copy.append(a)
 
-        if get_os() == "linux":
-            proc = subprocess.run(f"ldd {a}", shell=True, stdout=PIPE, text=True)
-            if proc.returncode != 0:
-                raise RuntimeError("Failed to execute ldd")
-            pat = re.compile(r" \/lib\/x86_64\-linux\-gnu\/([a-zA-Z_\-]+\.so(?:\.[0-9]+)*) ")
-            lib_path = Path("/usr/lib/x86_64-linux-gnu")
-            for name in re.findall(pat, proc.stdout, flags=0):
-                files_to_copy.append(lib_path / name)
+            if get_os() == "linux":
+                proc = subprocess.run(f"ldd {a}", shell=True, stdout=PIPE, text=True)
+                if proc.returncode != 0:
+                    raise RuntimeError("Failed to execute ldd")
+                pat = re.compile(r" \/lib\/x86_64\-linux\-gnu\/([a-zA-Z_\-]+\.so(?:\.[0-9]+)*) ")
+                lib_path = Path("/usr/lib/x86_64-linux-gnu")
+                for name in re.findall(pat, proc.stdout, flags=0):
+                    files_to_copy.append(lib_path / name)
 
         # DLLs of rdkit. Since 2020_09_1 submodules are separated.
         if self.get_rdkit_version() >= 2020091:
@@ -743,7 +847,7 @@ class NativeMaker:
 
     def _patch_rdkit_swig_files(self) -> None:
         # Customize the followings if required.
-        if self.config.swig_patch_enabled:
+        if self.config.swig_patch_enabled and self.get_rdkit_version() < 2021032:
             for filepath, patterns in (
                 (
                     # extract BOOST_BINARY
@@ -767,7 +871,7 @@ class NativeMaker:
         for filepath, patterns in (
             (
                 self.rdkit_swig_csharp_path / "RDKFuncsPINVOKE.cs",
-                [("(partial )?class RDKFuncsPINVOKE\\s*\\{", "partial class RDKFuncsPINVOKE {",)],
+                [("(partial )?class RDKFuncsPINVOKE\\s*\\{", "partial class RDKFuncsPINVOKE {")],
             ),
             (
                 self.rdkit_swig_csharp_path / "RDKFuncsPINVOKE.cs",
@@ -832,26 +936,18 @@ class NativeMaker:
 
     @property
     def test_csprojects(self) -> Collection[str]:
-        return (
-            "RDKit2DotNetTest",
-            "RDKit2DotNetTest2",
-            "NuGetExample",
-            "NuGetExample2",
-        )
+        return ("RDKit2DotNetTest", "RDKit2DotNetTest2", "NuGetExample", "NuGetExample2")
 
     @property
     def test_sln_names(self) -> Collection[str]:
-        return (
-            "RDKit2DotNet.sln",
-            "NuGetExample.sln",
-        )
+        return ("RDKit2DotNet.sln", "NuGetExample.sln")
 
     def _copy_test_projects(self):
         path_rdkit_files = self.this_path / "files" / "rdkit"
         for name in self.test_csprojects:
             remove_if_exist(self.rdkit_csharp_wrapper_path / name)
             shutil.copytree(
-                path_rdkit_files / name, self.rdkit_csharp_wrapper_path / name, dirs_exist_ok=True,
+                path_rdkit_files / name, self.rdkit_csharp_wrapper_path / name, dirs_exist_ok=True
             )
             replace_file_string(
                 self.rdkit_csharp_wrapper_path / name / f"{name}.csproj",
@@ -900,9 +996,9 @@ class NativeMaker:
                 for filename in glob.glob(str(dlls_path / "*.*")):
                     dll_basenames.append(os.path.basename(filename))
                 dll_basenames_dic[_os][cpu_model] = dll_basenames
-        assert dll_basenames_dic["win"]["x86"]
-        assert dll_basenames_dic["win"]["x64"]
-        assert dll_basenames_dic["linux"]["x64"]
+        # assert dll_basenames_dic["win"]["x86"]
+        # assert dll_basenames_dic["win"]["x64"]
+        # assert dll_basenames_dic["linux"]["x64"]
         assert not dll_basenames_dic["linux"]["x86"]
         return dll_basenames_dic
 
@@ -931,9 +1027,9 @@ class NativeMaker:
                     "\\<version\\>[0-9\\.]*\\<\\/version\\>",
                     f"<version>{self.get_version_for_nuget()}</version>",
                 ),
-                ("__RDKITVERSION__", f"{self.get_version_for_rdkit()}",),
-                ("__LIBVERSIONS__", ", ".join(lib_versions),),
-                ("__VISUALSTUDIOVERSION__", f"{get_vs_ver()}",),
+                ("__RDKITVERSION__", f"{self.get_version_for_rdkit()}"),
+                ("__LIBVERSIONS__", ", ".join(lib_versions)),
+                ("__VISUALSTUDIOVERSION__", f"{get_vs_ver()}"),
             ],
         )
         # write native file info to nuspec file.
@@ -1014,10 +1110,7 @@ class NativeMaker:
 
     def clean(self):
         if self.config.rdkit_path:
-            for path in (
-                self.path_GraphMolCSharp_i,
-                self.path_MolDraw2D_i,
-            ):
+            for path in (self.path_GraphMolCSharp_i, self.path_MolDraw2D_i):
                 make_or_restore_bak(path)
             for p in (
                 [
@@ -1057,6 +1150,8 @@ def main() -> None:
     parser.add_argument(
         "--build_platform", default="all", choices=list(typing.get_args(CpuModel)) + ["all"]
     )
+    parser.add_argument("--build_option", default="csharp", nargs="*", choices=["csharp", "off"])
+    parser.add_argument("--build_test", default=False, action="store_true")
     parser.add_argument("--disable_swig_patch", default=False, action="store_true")
     for opt in (
         "build_zlib",
@@ -1146,7 +1241,8 @@ def create_config(args: argparse.Namespace, config_info: Any):
         config.cairo_path = path_from_ini("CAIRO_DIR")
     config.eigen_path = path_from_ini("EIGEN_DIR")
     config.cairo_support = True
-    config.test_enabled = False
+    config.test_enabled = args.build_test
+    config.swig_csharp = "csharp" in args.build_option
     return config
 
 

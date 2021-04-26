@@ -1,0 +1,145 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ output extension=".cs" #>
+
+using GraphMolWrap;
+
+namespace RDKit
+{
+    public static partial class DataStructs
+    {
+<#
+    foreach (var fi in funcInfos)
+    {
+        string paramNamePrefix = paramNamePrefixTable[fi.ArgumentType];
+        string orig = fi.Name;
+        string metho = fi.WrapperName;
+        string typ = fi.ArgumentType;
+        string p1 = paramNamePrefix + "1";
+        string p2 = paramNamePrefix + "2";
+        var pars = new List<string>();
+        pars.Add(typ + " " + p1);
+        pars.Add(typ + " " + p2);
+        var vals = new List<string>();
+        vals.Add(p1);
+        vals.Add(p2);
+        foreach (var ex in  fi.Extra)
+        {
+            pars.Add(ex.TypeName + " " + ex.ArgName + (ex.OptValue == "" ? "" : (" = " + ex.OptValue)));
+            vals.Add(ex.ArgName);
+        }
+#>
+        public static double <#=metho#>(<#= string.Join(", ", pars) #>)
+            => RDKFuncs.<#=orig#>(<#= string.Join(", ", vals) #>);
+<#
+    }
+#>
+    }
+}
+
+<#+
+    public class ArgF
+    {
+        public ArgF(string typ, string arg, string opt)
+        {
+            TypeName = typ;
+            ArgName = arg;
+            OptValue = opt;
+        }
+
+        public string TypeName;
+        public string ArgName;
+        public string OptValue;
+    }
+
+    public class F
+    {
+        const string RE_par = @"(?<par>(?<typ>[a-zA-Z]\w*)\s+(?<arg>[a-z]\w*)(\s*\=\s*(?<val>[A-Za-z0-9_\.]*))?)";
+        static readonly Regex re = new Regex(RE_par + @"(\,\s*" + RE_par + @")*");
+        static readonly Regex re_par = new Regex(RE_par);
+
+        public F(string name, string argumentType)
+            : this(name, argumentType, null)
+        {
+        }
+
+        public F(string name, string argumentType, string extra)
+        {
+            {
+                var nn = name.Split(':');
+                switch (nn.Length)
+                {
+                    case 1:
+                        this.Name = this.WrapperName = nn[0];
+                        break;
+                    case 2:
+                        this.WrapperName = nn[0];
+                        this.Name = nn[1];
+                        break;
+                    default:
+                        throw new Exception(nameof(name) + " is not good.: " + name);
+                }
+            }
+            this.ArgumentType = argumentType;
+            this.Extra = new List<ArgF>();
+            if (extra != null)
+            {
+                var match = re.Match(extra);
+                foreach (Capture cap in match.Groups["par"].Captures)
+                {
+                    var pm = re_par.Match(cap.Value);
+                    var typ = pm.Groups["typ"].Value;
+                    var arg = pm.Groups["arg"].Value;
+                    var val = pm.Groups["val"].Value;
+                    this.Extra.Add(new ArgF(typ, arg, val));
+                }
+            }
+        }
+
+        public string WrapperName;
+        public string Name;
+        public string ArgumentType;
+        public List<ArgF> Extra;
+    }
+
+    public static Dictionary<string, string> paramNamePrefixTable = new Dictionary<string, string>()
+    {
+        ["ExplicitBitVect"] = "bv",
+        ["SparseIntVect32"] = "v",
+        ["SparseIntVectu32"] = "v",
+        ["SparseIntVect64"] = "v",
+    };
+
+    public static F[] funcInfos = new [] 
+    {
+        new F("AllBitSimilarity", "ExplicitBitVect"),
+        new F("AsymmetricSimilarity", "ExplicitBitVect"),
+        new F("BraunBlanquetSimilarity", "ExplicitBitVect"),
+        new F("CosineSimilarity", "ExplicitBitVect"),
+        new F("DiceSimilarity", "ExplicitBitVect"),
+        new F("DiceSimilarity", "SparseIntVect32", "bool returnDistance = false, double bounds = 0"),
+        new F("DiceSimilarity", "SparseIntVectu32", "bool returnDistance = false, double bounds = 0"),
+        new F("DiceSimilarity", "SparseIntVect64", "bool returnDistance = false, double bounds = 0"),
+        new F("KulczynskiSimilarity", "ExplicitBitVect"),
+        new F("McConnaugheySimilarity", "ExplicitBitVect"),
+        new F("OnBitSimilarity", "ExplicitBitVect"),
+        //new F("RogotGoldbergSimilarity", "ExplicitBitVect"),
+        //new F("RogotGoldbergSimilarity", "SparseIntVect32", "bool returnDistance = false, double bounds = 0"),
+        //new F("RogotGoldbergSimilarity", "SparseIntVectu32", "bool returnDistance = false, double bounds = 0"),
+        //new F("RogotGoldbergSimilarity", "SparseIntVect64", "bool returnDistance = false, double bounds = 0"),
+        new F("RusselSimilarity", "ExplicitBitVect"),
+        new F("SokalSimilarity", "ExplicitBitVect"),
+        new F("TanimotoSimilarity:TanimotoSimilarityEBV", "ExplicitBitVect"),
+        new F("TanimotoSimilarity:TanimotoSimilaritySIVi32", "SparseIntVect32", "bool returnDistance = false, double bounds = 0"),
+        new F("TanimotoSimilarity:TanimotoSimilaritySIVi64", "SparseIntVect64", "bool returnDistance = false, double bounds = 0"),
+        new F("TanimotoSimilarity:TanimotoSimilaritySIVu32", "SparseIntVectu32", "bool returnDistance = false, double bounds = 0"),
+        new F("TverskySimilarity", "ExplicitBitVect", "double a, double b"),
+        new F("TverskySimilarity", "SparseIntVect32", "double a, double b, bool returnDistance = false, double bounds = 0"),
+        new F("TverskySimilarity", "SparseIntVectu32", "double a, double b, bool returnDistance = false, double bounds = 0"),
+        new F("TverskySimilarity", "SparseIntVect64", "double a, double b, bool returnDistance = false, double bounds = 0"),
+    };
+#>
