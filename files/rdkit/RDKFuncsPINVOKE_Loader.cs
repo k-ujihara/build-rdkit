@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace GraphMolWrap
@@ -7,7 +8,69 @@ namespace GraphMolWrap
     partial class RDKFuncsPINVOKE
     {
         private const string DllBaseName = "RDKFuncs";
+        internal static bool loaded = false;
 
+#if NETCOREAPP3_1
+        /// <summary>
+        /// Implementation of DllImportResolver.
+        /// </summary>
+        /// <param name="libraryName">library name to load</param>
+        /// <param name="assembly">assembly loading</param>
+        /// <param name="searchPath"></param>
+        /// <returns></returns>
+        /// <see href="https://docs.microsoft.com/ja-jp/dotnet/standard/native-interop/cross-platform"/>
+        private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+        {
+            if (libraryName == DllBaseName)
+            {
+                var os = Environment.OSVersion;
+                string osname;
+                string suffix;
+                switch (os.Platform)
+                {
+                    case PlatformID.Win32NT:
+                        osname = "win";
+                        suffix = ".dll";
+                        break;
+                    case PlatformID.Unix:
+                        osname = "linux";
+                        suffix = ".so";
+                        break;
+                    default:
+                        return IntPtr.Zero;
+
+                }
+                string cpu = Environment.Is64BitProcess ? "x64" : "x86";
+
+                string filename = $"{DllBaseName}{suffix}";
+                {
+                    string pathToDll = Path.Combine(Path.GetDirectoryName(assembly.Location), "runtimes", $"{osname}-{cpu}", "native", filename);
+                    if (File.Exists(pathToDll))
+                        return NativeLibrary.Load(pathToDll, assembly, searchPath);
+                }
+                {
+                    // ASP.NET
+                    var uri = new Uri(assembly.CodeBase);
+                    if (uri.Scheme == "file")
+                    {
+                        string pathToDll = Path.Combine(Path.GetDirectoryName(uri.AbsolutePath), "runtimes", $"{osname}-{cpu}", "native", filename);
+                        if (File.Exists(pathToDll))
+                            return NativeLibrary.Load(pathToDll, assembly, searchPath);
+                    }
+                }
+            }
+            return IntPtr.Zero;
+        }
+
+        internal static void LoadDll()
+        {
+            if (!loaded)
+            {
+                NativeLibrary.SetDllImportResolver(Assembly.GetExecutingAssembly(), DllImportResolver);
+                loaded = true;
+            }
+        }
+#else
         [System.Security.SuppressUnmanagedCodeSecurity]
         internal static class UnsafeNativeMethods
         {
@@ -17,6 +80,10 @@ namespace GraphMolWrap
 
         internal static void LoadDll()
         {
+            if (loaded)
+                return;
+            loaded = true;
+
             var os = Environment.OSVersion;
             switch (os.Platform)
             {
@@ -80,5 +147,6 @@ namespace GraphMolWrap
             }
             return false;
         }
+#endif
     }
 }
