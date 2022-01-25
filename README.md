@@ -3,8 +3,8 @@
 - .NET Framework wrapper of RDKit.
 - NuGet package is available at [https://www.nuget.org/packages/RDKit.DotNetWrap/](https://www.nuget.org/packages/RDKit.DotNetWrap/).
 
-- Example codes are in `RDKit2DotNet.Example` directory.
-- See [instruction to build application](myApp).
+- Example code is in [Program.cs](files/rdkit/RDKit2DotNetTest/Program.cs).
+- See [Instruction to Build Application](myApp).
 
 ## How to Build
 

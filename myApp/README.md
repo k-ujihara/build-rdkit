@@ -44,6 +44,8 @@ See `create_and_run.bat` for Windows or `bash create_and_run.sh` for Linux.
 
 ## via Docker
 
+At first place NuGet package here, and then do below. NuGet package is available on https://www.nuget.org/packages/RDKit.DotNetWrap/.
+
 ```bash
 docker build --tag IMAGE_NAME -f Dockerfile .
 docker run IMAGE_NAME
