@@ -9,26 +9,38 @@
 ## How to Build
 
 - Registered NuGet package was built using the following versions.
-  - [RDKit Release_2021_03_1](https://github.com/rdkit/rdkit/releases/tag/Release_2021_03_1)
-  - [Boost 1.74.0](https://sourceforge.net/projects/boost/files/boost-binaries/1.74.0/)
+  - [RDKit Release_2021_09_4](https://github.com/rdkit/rdkit/releases/tag/Release_2021_09_4)
   - [Eigen 3.3.8](https://gitlab.com/libeigen/eigen/-/releases/3.3.8)
-  - [Cairo 1.16.0](https://www.cairographics.org/releases/cairo-1.16.0.tar.xz)
-  - [libpng 1.6.37](https://sourceforge.net/projects/libpng/files/libpng16/1.6.37/libpng-1.6.37.tar.xz)
-  - [pixman 0.40.0](https://www.cairographics.org/releases/pixman-0.40.0.tar.gz)
-  - [zlib 1.2.11](https://zlib.net/zlib1211.zip)
-  - [Python 3.8.3](https://www.python.org/)
-  - [CMAKE 3.18.20081302-MSVC_2](https://cmake.org/)
-  - [SWIG 4.0.2](http://www.swig.org/)
-  - [NuGet 5.3.1](https://nuget.org)
-  - Ubuntu 20.04.1 LTS on WSL2
-  - Visual Studio 2019
+  - for Windows
+    - [Boost 1.74.0](https://sourceforge.net/projects/boost/files/boost-binaries/1.74.0/)
+    - [Cairo 1.16.0](https://www.cairographics.org/releases/cairo-1.16.0.tar.xz)
+    - [libpng 1.6.37](https://sourceforge.net/projects/libpng/files/libpng16/1.6.37/libpng-1.6.37.tar.xz)
+    - [pixman 0.40.0](https://www.cairographics.org/releases/pixman-0.40.0.tar.gz)
+    - [zlib 1.2.11](https://zlib.net/zlib1211.zip)
+    - [CMAKE 3.18.20081302-MSVC_2](https://cmake.org/)
+    - Visual Studio 2019
+  - [Python 3.9](https://www.python.org/)
+  - [SWIG 3.0.12](http://www.swig.org/)
+  - dotnet-sdk-5.0
+  - for Linux
+    - Ubuntu 18.04.6 LTS on WSL2
 
-### Preparation
+### Build Instruction
 
-- Use Windows 10 (x64).
+Do the following procedure.
+
+- Build native binaries for Windows
+- Build native binaries for Linux
+- Build .NET wrapper
+- Build NuGet package
+
+#### Build native binaries for Windows 10 (x64)
+
+- On Windows 10 (x64)
 - Install Visual Studio 2019 enabling C++, C&#35; and CMAKE.
-- Install Python.
+- Install Python version greater than 3.8.
 - Install [SWIG](http://www.swig.org/).
+  - IMPORTANT: SWIG-3.0 is required. SWIG-4.0 does not work.
 - Make sure Python and SWIG are executable.
 - Clone this repository to some directory. A name of the directory including path should be short. It is highly recommended to place it under 'C:\'.
 - Download the following source archives and extract them here.
@@ -45,24 +57,75 @@
   - Copy `boost_#_##_#` directory here.
   - Only dll and lib, ie, the files in `lib64-msvc-14.#` and `lib32-msvc-14.#`, are used to build.
   - After above, `lib64-msvc-14.#` and `lib32-msvc-14.#` should be created under `boost_#_##_#` directory.
-- Customize `config.ini` file according to where above dependencies are installed.
-- Patch this PR [#3714](https://github.com/rdkit/rdkit/pull/3714).
-- In order to build RDKit for Linux, install Ubuntu 20.4 on WSL2 and install `dotnet`, `boost`, `cairo`, `cmake`, `eigen` and `swig` on it.
+- Customize `config.txt` file according to where above dependencies are installed.
+- Open `Developer Command Prompt for VS 2019`.
+- Execute `bash build_win.bat` to create native binaries in `$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/win/`.
 
-### Build and create NuGet package
+#### Build native binaries for Ubuntu 18.4
 
-- Open 'Developer Command Prompt for VS 2019'.
-- Execute `build_all.bat`.
+- Don't share with Windows build.
+- Ubuntu 18.4 is recommended.
+- Install python 3.8 or greater, swig 3.0, and eigen3.
+- Install dotnet-sdk-5.0 and Mono.
+```bash
+sudo wget https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
+    sudo dpkg -i packages-microsoft-prod.deb && \
+    sudo rm packages-microsoft-prod.deb && \
+    sudo apt-get update && \
+    sudo apt-get install -y apt-transport-https && \
+    sudo apt-get update && \
+    sudo apt-get install -y dotnet-sdk-5.0 && \
+    sudo apt-get install -y mono-mcs
+```
+- Clone this repository.
+- Download the following source archives and extract them here.
+  - [RDKit](hhttps://github.com/rdkit/rdkit/) to `rdkit-Release_####_##_#`.
+- Customize `config.txt` file according to where above dependencies are installed.
+- Execute `bash build_linux.sh` to create native binaries in `$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/linux/`.
 
-#### Step by Step
+#### Build .NET wrapper
 
-- Open 'Developer Command Prompt for VS 2019'.
-- Execute `python .\build_rdkit_csharp.py --build_freetype` to make FreeType.
-- Execute `python .\build_rdkit_csharp.py --build_zlib` to make zlib.
-- Execute `python .\build_rdkit_csharp.py --build_libpng` to make libpng.
-- Execute `python .\build_rdkit_csharp.py --build_pixman` to make pixman.
-- Execute `python .\build_rdkit_csharp.py --build_cairo` to make cairo.
-- Execute `python .\build_rdkit_csharp.py --build_rdkit` to make RDKit for Windows.
-- Execute `wsl python3 ./build_rdkit_csharp.py --build_rdkit` to make RDKit for Linux.
-- Execute `python .\build_rdkit_csharp.py --build_wrapper` to make RDKit .NET wrapper.
-- Execute `python .\build_rdkit_csharp.py --build_nuget` to make NuGet package, which includes both Windows and Linux versions.
+- On Windows 10 (x64)
+- Open `Developer Command Prompt for VS 2019`.
+- Execute `python ./build_rdkit_csharp.py --build_wrapper` to create assembry files named `RDKit2DotNet.dll` in `$(RDKIT_DIR)\Code\JavaWrappers\csharp_wrapper\RDKit2DotNet\bin\Release\`.
+
+#### Build and create NuGet package
+
+- Open `Developer Command Prompt for VS 2019`.
+- Copy native binaries for Linux to `$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/linux/`.
+- Execute `python ./build_rdkit_csharp.py --build_nuget` to create NuGet package on `$(RDKIT_DIR)\Code\JavaWrappers\csharp_wrapper\RDKit2DotNet\bin\Release\`.
+
+#### Copy created NuGet package to myApp
+
+- Open `Developer Command Prompt for VS 2019`.
+- Execute `nmake -f Makefile.win copy_to_myapp`.
+
+### Install SWIG-3.0.12
+
+Because RDKit's CMakeFile.txt does not work with SWIG 4.0, we need to install SWIG-3.0.
+
+#### for Windows
+
+Download SWIG executable from https://sourceforge.net/projects/swig/files/swigwin/swigwin-3.0.12/, extract, and add the directory to `PATH`.
+
+#### for Linux
+
+If SWIG-3.0 package is not availabe in your system, install it from source with the following instruction.
+
+```
+sudo apt-get update
+sudo apt-get install libpcre3 libpcre3-dev
+wget https://sourceforge.net/projects/swig/files/swig/swig-3.0.12/swig-3.0.12.tar.gz
+tar -zxvf swig-3.0.12.tar.gz
+cd swig-3.0.12
+./configure
+make
+sudo make install
+make clean
+```
+
+If you required to uninstall SWIG-4.0, do the following.
+
+```
+sudo apt-get --purge remove swig
+```

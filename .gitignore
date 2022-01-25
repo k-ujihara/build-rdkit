@@ -354,11 +354,13 @@ ModelManifest.xml
 /rdkit-*/
 /zlib-*/
 /swigwin-*/
+/swig-*/
 /freetype-*/
 /cairo-*/
 /lpng*/
 /pixman-*/
 /libpng/
+/Release_*.zip
 
 # Build directory
 
@@ -373,3 +375,4 @@ Testing/
 # others
 
 *.bak
+____*.*

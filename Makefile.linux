@@ -1,0 +1,48 @@
+PLATFORM=x64
+USE_BOOST=FALSE
+USE_CAIRO=FALSE
+USE_STATIC=TRUE
+
+CONFIGURATION=Release
+
+include config.txt
+
+RDKIT_NATIVE_OPTS =
+
+ifeq ($(USE_CAIRO),TRUE)
+else
+	RDKIT_NATIVE_OPTS:=$(RDKIT_NATIVE_OPTS) --no_cairo
+endif
+
+ifeq ($(USE_BOOST), TRUE)
+	RDKIT_NATIVE_OPTS:=$(RDKIT_NATIVE_OPTS) --use_boost
+endif
+
+ifeq ($(USE_STATIC), TRUE)
+	RDKIT_NATIVE_OPTS:=$(RDKIT_NATIVE_OPTS) --use_static_libs
+endif
+
+RDKIT_NATIVE_TARGETS:=$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/linux/$(PLATFORM)/RDKFuncs.so
+RDKIT_WRAPPER_TARGETS:=$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet/bin/$(CONFIGURATION)/netcoreapp3.1/RDKit2DotNet.dll
+
+all: $(TARGETS)
+rdkit_native: $(RDKIT_NATIVE_TARGETS)
+rdkit_wrapper: $(RDKIT_WRAPPER_TARGETS)
+
+$(RDKIT_NATIVE_TARGETS): 
+	python3.8 ./build_rdkit_csharp.py --build_rdkit $(RDKIT_NATIVE_OPTS) --build_platform $(PLATFORM)
+
+$(RDKIT_WRAPPER_TARGETS): $(RDKIT_NATIVE_TARGETS)
+	python3.8 ./build_rdkit_csharp.py --build_wrapper $(RDKIT_NATIVE_OPTS)
+
+nuget_package: $(RDKIT_WRAPPER_TARGETS) $(RDKIT_NATIVE_TARGETS)
+	python3.8 ./build_rdkit_csharp.py --build_nuget
+
+copy_to_myapp:
+	cp $(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet/bin/Release/RDKit.DotNetWrap.$(RDKIT2DOTNET_VERSION).nupkg ./myApp/
+	
+clean:
+	python3.8 ./build_rdkit_csharp.py --clean
+
+.PHONY: clean
+.PHONY: rdkit_native rdkit_wrapper nuget_package

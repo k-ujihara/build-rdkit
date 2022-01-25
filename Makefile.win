@@ -1,0 +1,109 @@
+PLATFORM=x86
+USE_BOOST=TRUE
+USE_CAIRO=TRUE
+
+!IF "$(PLATFORM)" == "x86" 
+MSPlatform=Win32
+!ELSEIF "$(PLATFORM)" == "x64" 
+MSPlatform=x64
+!ELSE
+!ERROR Unknown platform: $(PLATFORM)
+!ENDIF
+
+CONFIGURATION=Release
+!include <config.txt>
+
+RDKIT2DOTNET_VERSION=$(RDKIT_DIR:rdkit-Release_=)
+RDKIT2DOTNET_VERSION=$(RDKIT2DOTNET_VERSION:_=)
+RDKIT2DOTNET_VERSION=0.$(RDKIT2DOTNET_VERSION:_=).$(MINOR_VERSION)
+
+ZLIB_TARGETS = \
+	$(ZLIB_DIR)\build$(PLATFORM)\$(CONFIGURATION)\zlib.dll \
+	$(ZLIB_DIR)\build$(PLATFORM)\$(CONFIGURATION)\zlib.lib \
+	$(ZLIB_DIR)\build$(PLATFORM)\$(CONFIGURATION)\zlibstatic.lib
+
+LIBPNG_TARGETS = \
+	$(LIBPNG_DIR)\build$(PLATFORM)\$(CONFIGURATION)\libpng16.dll \
+	$(LIBPNG_DIR)\build$(PLATFORM)\$(CONFIGURATION)\libpng16.lib
+
+FREETYPE_TARGETS = \
+	$(FREETYPE_DIR)\objs\$(MSPlatform)\$(CONFIGURATION)\freetype.dll \
+	$(FREETYPE_DIR)\objs\$(MSPlatform)\$(CONFIGURATION)\freetype.lib
+
+PIXMAN_TARGETS = \
+	$(PIXMAN_DIR)\vc2017\$(MSPlatform)\$(CONFIGURATION)\pixman.dll \
+	$(PIXMAN_DIR)\vc2017\$(MSPlatform)\$(CONFIGURATION)\pixman.lib
+
+CAIRO_TARGETS = \
+	$(CAIRO_DIR)\vc2017\$(MSPlatform)\$(CONFIGURATION)\cairo.dll \
+	$(CAIRO_DIR)\vc2017\$(MSPlatform)\$(CONFIGURATION)\cairo.lib
+
+RDKIT_NATIVE_TARGETS = \
+	$(RDKIT_DIR)\Code\JavaWrappers\csharp_wrapper\$(CONFIGURATION)\win\$(PLATFORM)\RDKFuncs.dll
+
+RDKIT_WRAPPER_TARGETS = \
+	$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet/bin/$(CONFIGURATION)/netcoreapp3.1/RDKit2DotNet.dll \
+	$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/RDKit2DotNet/bin/$(CONFIGURATION)/netstandard2.0/RDKit2DotNet.dll
+
+RDKIT_NATIVE_DEPENDS = $(ZLIB)
+RDKIT_NATIVE_OPTS = 
+
+!IF "$(USE_CAIRO)" == "TRUE" 
+RDKIT_NATIVE_DEPENDS = $(RDKIT_NATIVE_DEPENDS) $(CAIRO_TARGETS)
+!ELSE
+RDKIT_NATIVE_OPTS = $(RDKIT_NATIVE_OPTS) --no_cairo
+!ENDIF
+
+!IF "$(USE_BOOST)" == "TRUE"
+RDKIT_NATIVE_OPTS = $(RDKIT_NATIVE_OPTS) --use_boost
+!ELSE
+!ENDIF
+
+all: $(TARGETS)
+rdkit_native: $(RDKIT_NATIVE_TARGETS)
+rdkit_wrapper: $(RDKIT_WRAPPER_TARGETS)
+.PHONY: clean
+
+zlib: $(ZLIB_TARGETS)
+libpng: $(LIBPNG_TARGETS)
+pixman: $(PIXMAN_TARGETS)
+freetype: $(FREETYPE_TARGETS)
+cairo: $(CAIRO_TARGETS)
+
+$(ZLIB_TARGETS):
+	python .\build_rdkit_csharp.py --build_zlib --build_platform $(PLATFORM)
+
+$(LIBPNG_TARGETS): $(ZLIB_TARGETS)
+	if exist del $(LIBPNG_TARGETS) /Q $(LIBPNG_TARGETS)
+	python .\build_rdkit_csharp.py --build_libpng --build_platform $(PLATFORM)
+
+$(PIXMAN_TARGETS):
+	python .\build_rdkit_csharp.py --build_pixman --build_platform $(PLATFORM)
+
+$(FREETYPE_TARGETS):
+	python .\build_rdkit_csharp.py --build_freetype --build_platform $(PLATFORM)
+
+$(CAIRO_TARGETS): $(PIXMAN_TARGETS) $(LIBPNG_TARGETS) $(FREETYPE_TARGETS) $(ZLIB_TARGETS)
+	if exist $(CAIRO_TARGETS) del /Q $(CAIRO_TARGETS)
+	python .\build_rdkit_csharp.py --build_cairo --build_platform $(PLATFORM)
+
+$(RDKIT_NATIVE_TARGETS): $(CAIRO_TARGETS)
+	if exist $(RDKIT_NATIVE_TARGETS) del /Q $(RDKIT_NATIVE_TARGETS)
+	python .\build_rdkit_csharp.py --build_rdkit $(RDKIT_NATIVE_OPTS) --build_platform $(PLATFORM)
+
+$(RDKIT_WRAPPER_TARGETS): $(RDKIT_NATIVE_TARGETS)
+	python ./build_rdkit_csharp.py --build_wrapper $(RDKIT_NATIVE_OPTS)
+
+nuget_package: $(RDKIT_WRAPPER_TARGETS) $(RDKIT_NATIVE_TARGETS)
+	python ./build_rdkit_csharp.py --build_nuget
+
+copy_to_myapp:
+	copy $(RDKIT_DIR)\Code\JavaWrappers\csharp_wrapper\RDKit2DotNet\bin\Release\RDKit.DotNetWrap.$(RDKIT2DOTNET_VERSION).nupkg .\myApp\
+
+clean:
+	rmdir /S /Q $(ZLIB_DIR)\build$(PLATFORM)
+	rmdir /S /Q $(LIBPNG_DIR)\build$(PLATFORM)
+	rmdir /S /Q $(FREETYPE_DIR)\objs\$(MSPlatform)
+	rmdir /S /Q $(PIXMAN_DIR)\vc2017\$(MSPlatform)
+	rmdir /S /Q $(CAIRO_DIR)\vc2017\$(MSPlatform)
+	python .\build_rdkit_csharp.py --clean_rdkit

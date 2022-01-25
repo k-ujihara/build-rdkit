@@ -20,14 +20,9 @@ exit /b 1
 @where /Q cl
 @if errorlevel 1 goto :CL_NOT_FOUND
 
-python .\build_rdkit_csharp.py --build_freetype --build_zlib --build_libpng --build_pixman --build_cairo --build_rdkit
+nmake -f Makefile.win rdkit_native PLATFORM=x86
 @if errorlevel 1 goto :ERROREND
-
-@rem wsl sudo hwclock -s
-wsl python3 ./build_rdkit_csharp.py --build_rdkit
-@if errorlevel 1 goto :ERROREND
-
-python .\build_rdkit_csharp.py  --build_wrapper --build_nuget
+nmake -f Makefile.win rdkit_native PLATFORM=x64
 @if errorlevel 1 goto :ERROREND
 
 @goto :END
