@@ -3,7 +3,7 @@
 Notes:
     This is developed with rdkit-Release_2021_09_4.
 """
-
+from enum import Enum
 import argparse
 import glob
 import logging
@@ -47,6 +47,20 @@ SupportedSystem = Literal["win", "linux"]
 
 here = Path(__file__).parent.resolve()
 
+class LangType(Enum):
+    CPlusPlus = 1
+    Java = 2
+    CSharp = 3
+    Python = 4
+
+_LangType_to_str: Mapping[LangType, str]  ={
+    LangType.CPlusPlus: "cpp",
+    LangType.Java: "java",
+    LangType.CSharp: "CSharp",
+    LangType.Python : "python",
+}
+
+
 _platform_system_to_system: Mapping[str, SupportedSystem] = {
     "Windows": "win",
     "Linux": "linux",
@@ -74,6 +88,7 @@ _vs_to_msvc_internal_ver: Mapping[VisualStudioVersion, MSVCInternalVersion] = {
     "15.0": "14.1",
     "16.0": "14.2",
 }
+
 
 
 def get_os() -> SupportedSystem:
@@ -283,6 +298,7 @@ class Config:
         self.test_enabled: bool = False
         self.limit_external: bool = False
         self.use_static_libs: bool = False
+        self.target_lang: LangType = LangType.CPlusPlus
 
 
 def to_on_off(flag: bool) -> str:
@@ -348,13 +364,23 @@ class NativeMaker:
 
     @property
     def build_dir_name(self) -> str:
+        """Returns build path. Typically "buildx86".
+
+        Returns:
+            str: Directory name.
+        """
         assert self.build_platform
         return f"build{self.build_platform}"
 
     @property
-    def build_dir_name_for_csharp(self) -> str:
+    def build_dir_name_of_rdkit(self) -> str:
+        """Returns build path for RDKit. Typically "buildx86winCSharp".
+
+        Returns:
+            str: Directory name.
+        """
         assert self.build_platform
-        return f"build{get_os()}{self.build_platform}CSharp"
+        return f"build{get_os()}{self.build_platform}{_LangType_to_str[self.config.target_lang]}"
 
     @property
     def ms_build_platform(self) -> MSPlatform:
@@ -416,8 +442,8 @@ class NativeMaker:
         return self.boost_path / f"lib{self.address_model}-msvc-{get_msvc_internal_ver()}"
 
     @property
-    def rdkit_csharp_build_path(self) -> Path:
-        return self.rdkit_path / self.build_dir_name_for_csharp
+    def rdkit_build_path(self) -> Path:
+        return self.rdkit_path / self.build_dir_name_of_rdkit
 
     @property
     def rdkit_csharp_wrapper_path(self) -> Path:
@@ -678,25 +704,33 @@ class NativeMaker:
     def path_RDKit2DotNet_folder(self):
         return self.rdkit_csharp_wrapper_path / "RDKit2DotNet"
 
-    def build_cmake_rdkit(self) -> None:
-        self.rdkit_csharp_build_path.mkdir(exist_ok=True)
+    def build_cmake_rdkit(self) -> Sequence[str]:
+        self.rdkit_build_path.mkdir(exist_ok=True)
         _curdir = os.path.abspath(os.curdir)
-        os.chdir(self.rdkit_csharp_build_path)
+        os.chdir(self.rdkit_build_path)
         try:
             self._patch_i_files()
-            self._make_rdkit_cmake()
+            cmd = self._make_rdkit_cmake()
+            return cmd
         finally:
             os.chdir(_curdir)
 
     def build_rdkit(self) -> None:
-        self.rdkit_csharp_build_path.mkdir(exist_ok=True)
+        self.rdkit_build_path.mkdir(exist_ok=True)
         _curdir = os.path.abspath(os.curdir)
-        os.chdir(self.rdkit_csharp_build_path)
+        os.chdir(self.rdkit_build_path)
         try:
             if get_os() == "win":
                 self.run_msbuild("RDKit.sln")
             else:
-                call_subprocess(["make", "-j", "RDKFuncs"])
+                cmd = ["make", "-j"]
+                if self.config.target_lang == LangType.CPlusPlus:
+                    pass
+                elif self.config.target_lang == LangType.CSharp:
+                    cmd += ["RDKFuncs"]
+                else:
+                    raise AssertionError
+                call_subprocess(cmd)
         finally:
             os.chdir(_curdir)
 
@@ -851,11 +885,12 @@ endif()
         self._patch_MolSupplier_i()
         self._patch_Streams_i()
 
-    def _make_rdkit_cmake(self) -> None:
+    def _make_rdkit_cmake(self) -> Sequence[str]:
         cmd: List[str] = self._get_cmake_rdkit_cmd_line()
         if get_os() == "win":
             cmd = [a.replace("\\", "/") for a in cmd]
         call_subprocess(cmd)
+        return cmd
 
     def _get_cmake_rdkit_cmd_line(self) -> List[str]:
         def f_test() -> str:
@@ -870,12 +905,22 @@ endif()
         args = [f"{str(self.rdkit_path)}"]
         args += ["-Wdev"]
         args += self.g_option_of_cmake
-        args += [
-            "-DRDK_BUILD_SWIG_WRAPPERS=ON",
-            "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON",
-            "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF",
-            "-DRDK_BUILD_PYTHON_WRAPPERS=OFF",
-        ]
+        if self.config.target_lang == LangType.CPlusPlus:
+            args += [
+                "-DRDK_BUILD_SWIG_WRAPPERS=OFF",
+                "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=OFF",
+                "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF",
+                "-DRDK_BUILD_PYTHON_WRAPPERS=OFF",
+            ]
+        elif self.config.target_lang == LangType.CSharp:
+            args += [
+                "-DRDK_BUILD_SWIG_WRAPPERS=ON",
+                "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON",
+                "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF",
+                "-DRDK_BUILD_PYTHON_WRAPPERS=OFF",
+            ]
+        else:
+            raise RuntimeError(f"Not supported. {self.config.target_lang}")
         if self.config.boost_path:
             args += [
                 f"-DBOOST_ROOT={str(self.boost_path)}",
@@ -976,6 +1021,17 @@ endif()
                 ]
         return ["cmake"] + args
 
+    def get_RDKFuncs_dll_path(self) -> Path:
+        a: Path
+        a = self.rdkit_build_path / "Code" / "JavaWrappers" / "csharp_wrapper"
+        if get_os() == "win":
+            a = a / "Release" / "RDKFuncs.dll"
+        elif get_os() == "linux":
+            a = a / "RDKFuncs.so"
+        else:
+            raise RuntimeError
+        return a
+
     def _copy_dlls(self) -> None:
         assert self.build_platform
         dll_dest_path = self.rdkit_csharp_wrapper_path / get_os() / self.build_platform
@@ -984,25 +1040,17 @@ endif()
         logging.info(f"Copy DLLs to {dll_dest_path}.")
 
         files_to_copy: List[Union[str, PathLike]] = []
-        a: Path
 
-        a = self.rdkit_csharp_build_path / "Code" / "JavaWrappers" / "csharp_wrapper"
-        if get_os() == "win":
-            a = a / "Release" / "RDKFuncs.dll"
-        elif get_os() == "linux":
-            a = a / "RDKFuncs.so"
-        else:
-            raise RuntimeError
-        rdfunc_dll_path: Path = a
-        files_to_copy.append(rdfunc_dll_path)
+        if self.config.target_lang == LangType.CSharp:
+            files_to_copy.append(self.get_RDKFuncs_dll_path())
 
         # pick up dependent DLLs in buildlinux*CSharp/lib or buildwin*CSharp\bin\Release
         if get_os() == "win":
-            lib_path = self.rdkit_csharp_build_path / "bin" / "Release"
+            lib_path = self.rdkit_build_path / "bin" / "Release"
             for file_path in lib_path.glob("*.dll"):
                 files_to_copy.append(file_path)
         elif get_os() == "linux":
-            lib_path = self.rdkit_csharp_build_path / "lib"
+            lib_path = self.rdkit_build_path / "lib"
             for file_path in lib_path.glob("*.so.1"):
                 files_to_copy.append(file_path)
         else:
@@ -1419,6 +1467,9 @@ def main() -> None:
     parser.add_argument(
         "--build_platform", default="all", choices=list(typing.get_args(CpuModel)) + ["all"]
     )
+    parser.add_argument(
+        "--target_lang", default="csharp", choices=("csharp", "java", "cpp")
+    )
     for opt in (
         "build_zlib",
         "build_libpng",
@@ -1439,6 +1490,8 @@ def main() -> None:
         "clean_zlib",
         "clean_rdkit",
         "build_rdkit_only",
+        "show_cmake",
+        "enable_test",
     ):
         parser.add_argument(f"--{opt}", default=False, action="store_true")
     args = parser.parse_args()
@@ -1451,6 +1504,12 @@ def main() -> None:
 
     default_config: Mapping[str, str] = config_file_to_map(Path("config.txt"))
     config = create_config(args, default_config)
+    if args.target_lang == "csharp":
+        config.target_lang = LangType.CSharp
+    if args.target_lang == "cpp":
+        config.target_lang = LangType.CPlusPlus
+
+    config.test_enabled = args.enable_test
 
     curr_dir = os.getcwd()
     try:
@@ -1476,6 +1535,9 @@ def main() -> None:
                 maker.make_pixman()
             if args.build_cairo:
                 maker.make_cairo()
+            if args.show_cmake:
+                cmd = maker.build_cmake_rdkit()
+                print(" ".join([(('"' + s + '"') if (" " in s or '"' in s) else s) for s in cmd]))
             if args.build_cmake:
                 maker.build_cmake_rdkit()
             if args.build_rdkit_only:
