@@ -92,7 +92,7 @@ $(RDKIT_NATIVE_TARGETS): $(CAIRO_TARGETS)
 	python .\build_rdkit_csharp.py --build_rdkit $(RDKIT_NATIVE_OPTS) --build_platform $(PLATFORM)
 
 $(RDKIT_WRAPPER_TARGETS): $(RDKIT_NATIVE_TARGETS)
-	python ./build_rdkit_csharp.py --build_wrapper $(RDKIT_NATIVE_OPTS)
+	python ./build_rdkit_csharp.py --build_wrapper --more_functions $(RDKIT_NATIVE_OPTS)
 
 nuget_package: $(RDKIT_WRAPPER_TARGETS) $(RDKIT_NATIVE_TARGETS)
 	python ./build_rdkit_csharp.py --build_nuget

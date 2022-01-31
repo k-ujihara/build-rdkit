@@ -59,7 +59,7 @@ Do the following procedure.
   - After above, `lib64-msvc-14.#` and `lib32-msvc-14.#` should be created under `boost_#_##_#` directory.
 - Customize `config.txt` file according to where above dependencies are installed.
 - Open `Developer Command Prompt for VS 2019`.
-- Execute `bash build_win.bat` to create native binaries in `$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/win/`.
+- Execute `bash build_win.bat` to create native binaries in `${RDKIT_DIR}/Code/JavaWrappers/csharp_wrapper/win/`.
 
 #### Build native binaries for Ubuntu 18.4
 
@@ -81,19 +81,19 @@ sudo wget https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-
 - Download the following source archives and extract them here.
   - [RDKit](hhttps://github.com/rdkit/rdkit/) to `rdkit-Release_####_##_#`.
 - Customize `config.txt` file according to where above dependencies are installed.
-- Execute `bash build_linux.sh` to create native binaries in `$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/linux/`.
+- Execute `bash build_linux.sh` to create native binaries in `${RDKIT_DIR}/Code/JavaWrappers/csharp_wrapper/linux/`.
 
 #### Build .NET wrapper
 
 - On Windows 10 (x64)
 - Open `Developer Command Prompt for VS 2019`.
-- Execute `python ./build_rdkit_csharp.py --build_wrapper` to create assembry files named `RDKit2DotNet.dll` in `$(RDKIT_DIR)\Code\JavaWrappers\csharp_wrapper\RDKit2DotNet\bin\Release\`.
+- Execute `python ./build_rdkit_csharp.py --build_wrapper` to create assembry files named `RDKit2DotNet.dll` in `${RDKIT_DIR}\Code\JavaWrappers\csharp_wrapper\RDKit2DotNet\bin\Release\`.
 
 #### Build and create NuGet package
 
 - Open `Developer Command Prompt for VS 2019`.
-- Copy native binaries for Linux to `$(RDKIT_DIR)/Code/JavaWrappers/csharp_wrapper/linux/`.
-- Execute `python ./build_rdkit_csharp.py --build_nuget` to create NuGet package on `$(RDKIT_DIR)\Code\JavaWrappers\csharp_wrapper\RDKit2DotNet\bin\Release\`.
+- Copy native binaries for Linux to `${RDKIT_DIR}/Code/JavaWrappers/csharp_wrapper/linux/`.
+- Execute `python ./build_rdkit_csharp.py --build_nuget` to create NuGet package on `${RDKIT_DIR}\Code\JavaWrappers\csharp_wrapper\RDKit2DotNet\bin\Release\`.
 
 #### Copy created NuGet package to myApp
 
@@ -129,3 +129,20 @@ If you required to uninstall SWIG-4.0, do the following.
 ```
 sudo apt-get --purge remove swig
 ```
+
+### Build Java wrapper
+
+Do below to build and run test.  
+
+```
+make -f Makefile.linux rdkit_java_test USE_BOOST=TRUE
+cd ${RDKIT_DIR}/Code/JavaWrappers/gmwrapper/
+wget https://repo1.maven.org/maven2/junit/junit/4.13/junit-4.13.jar
+mv junit-4.13.jar junit4.jar
+wget https://search.maven.org/remotecontent?filepath=org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar
+mv remotecontent\?filepath=org%2Fhamcrest%2Fhamcrest-core%2F1.3%2Fhamcrest-core-1.3.jar hamcrest-core.jar
+export RDBASE=${RDKIT_DIR}
+LD_LIBRARY_PATH=${RDKIT_DIR}/Code/JavaWrappers/gmwrapper:$LD_LIBRARY_PATH java -cp ${RDKIT_DIR}/Code/JavaWrappers/gmwrapper/junit4.jar:${RDKIT_DIR}/Code/JavaWrappers/gmwrapper/hamcrest-core.jar:${RDKIT_DIR}/Code/JavaWrappers/gmwrapper/org.RDKit.jar:${RDKIT_DIR}/Code/JavaWrappers/gmwrapper/build-test org.junit.runner.JUnitCore org.RDKit.GraphMolTestSuite
+```
+
+

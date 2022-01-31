@@ -3,7 +3,7 @@
 Notes:
     This is developed with rdkit-Release_2021_09_4.
 """
-
+from enum import Enum
 import argparse
 import glob
 import logging
@@ -46,6 +46,20 @@ MSVCInternalVersion = Literal["14.1", "14.2"]
 SupportedSystem = Literal["win", "linux"]
 
 here = Path(__file__).parent.resolve()
+
+class LangType(Enum):
+    CPlusPlus = 1
+    Java = 2
+    CSharp = 3
+    Python = 4
+
+_LangType_to_str: Mapping[LangType, str]  ={
+    LangType.CPlusPlus: "cpp",
+    LangType.Java: "java",
+    LangType.CSharp: "CSharp",
+    LangType.Python : "python",
+}
+
 
 _platform_system_to_system: Mapping[str, SupportedSystem] = {
     "Windows": "win",
@@ -186,13 +200,22 @@ def call_subprocess(cmd: Sequence[str], show_info: bool = True) -> None:
         sys.exit(e.returncode)
 
 
-def remove_if_exist(path: Path):
+def remove_if_exist(path: Path) -> None:
     if path.exists():
         if path.is_file():
             path.unlink()
         elif path.is_dir():
             shutil.rmtree(path)
 
+def remove_by_pattern(parent: Path, re_pattern: str, delete_on_match: bool) -> None:
+    pat = re.compile(re_pattern)
+    for p in parent.iterdir():
+        if delete_on_match:
+            if pat.match(p.name):
+                remove_if_exist(p)
+        else:
+            if not pat.match(p.name):
+                remove_if_exist(p)
 
 def makefile_to_lines(filename: PathLike) -> Iterable[str]:
     lines: List[str] = []
@@ -283,6 +306,8 @@ class Config:
         self.test_enabled: bool = False
         self.limit_external: bool = False
         self.use_static_libs: bool = False
+        self.target_lang: LangType = LangType.CPlusPlus
+        self.more_functions: bool = False
 
 
 def to_on_off(flag: bool) -> str:
@@ -348,13 +373,23 @@ class NativeMaker:
 
     @property
     def build_dir_name(self) -> str:
+        """Returns build path. Typically "buildx86".
+
+        Returns:
+            str: Directory name.
+        """
         assert self.build_platform
         return f"build{self.build_platform}"
 
     @property
-    def build_dir_name_for_csharp(self) -> str:
+    def build_dir_name_of_rdkit(self) -> str:
+        """Returns build path for RDKit. Typically "buildx86winCSharp".
+
+        Returns:
+            str: Directory name.
+        """
         assert self.build_platform
-        return f"build{get_os()}{self.build_platform}CSharp"
+        return f"build{get_os()}{self.build_platform}{_LangType_to_str[self.config.target_lang]}"
 
     @property
     def ms_build_platform(self) -> MSPlatform:
@@ -416,16 +451,22 @@ class NativeMaker:
         return self.boost_path / f"lib{self.address_model}-msvc-{get_msvc_internal_ver()}"
 
     @property
-    def rdkit_csharp_build_path(self) -> Path:
-        return self.rdkit_path / self.build_dir_name_for_csharp
+    def rdkit_build_path(self) -> Path:
+        return self.rdkit_path / self.build_dir_name_of_rdkit
 
     @property
-    def rdkit_csharp_wrapper_path(self) -> Path:
-        return self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper"
+    def rdkit_wrapper_path(self) -> Path:
+        dic: Mapping[LangType, str] = {
+            LangType.Java: "gmwrapper",
+            LangType.CSharp: "csharp_wrapper",
+        }
+        if self.config.target_lang not in dic:
+            raise AssertionError
+        return self.rdkit_path / "Code" / "JavaWrappers" / dic[self.config.target_lang]
 
     @property
     def rdkit_swig_csharp_path(self) -> Path:
-        return self.rdkit_csharp_wrapper_path / "swig_csharp"
+        return self.rdkit_wrapper_path / "swig_csharp"
 
     def get_rdkit_version(self) -> int:
         return int(re.sub(r".*_(\d\d\d\d)_(\d\d)_(\d)", r"\1\2\3", str(self.config.rdkit_path)))
@@ -634,7 +675,7 @@ class NativeMaker:
 
     @property
     def path_GraphMolCSharp_i(self) -> Path:
-        return self.rdkit_csharp_wrapper_path / "GraphMolCSharp.i"
+        return self.rdkit_wrapper_path / "GraphMolCSharp.i"
 
     @property
     def path_Descriptors_i(self) -> Path:
@@ -661,6 +702,10 @@ class NativeMaker:
         return self.rdkit_path / "Code" / "GraphMol" / "MolDraw2D" / "MolDraw2D.h"
 
     @property
+    def _path_csharp_wrapper_CMakeLists_txt(self) -> Path:
+        return self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper" / "CMakeLists.txt"
+
+    @property
     def bakable_files(self) -> Iterable[Path]:
         return [
             self.path_streams_cpp,
@@ -672,31 +717,42 @@ class NativeMaker:
             self.path_Streams_i,
             self.path_MolDraw2D_i,
             self.path_MolDraw2D_h,
+            self._path_csharp_wrapper_CMakeLists_txt,
         ]
 
     @property
     def path_RDKit2DotNet_folder(self):
-        return self.rdkit_csharp_wrapper_path / "RDKit2DotNet"
+        return self.rdkit_wrapper_path / "RDKit2DotNet"
 
-    def build_cmake_rdkit(self) -> None:
-        self.rdkit_csharp_build_path.mkdir(exist_ok=True)
+    def build_cmake_rdkit(self) -> Sequence[str]:
+        self.rdkit_build_path.mkdir(exist_ok=True)
         _curdir = os.path.abspath(os.curdir)
-        os.chdir(self.rdkit_csharp_build_path)
+        os.chdir(self.rdkit_build_path)
         try:
             self._patch_i_files()
-            self._make_rdkit_cmake()
+            cmd = self._make_rdkit_cmake()
+            return cmd
         finally:
             os.chdir(_curdir)
 
     def build_rdkit(self) -> None:
-        self.rdkit_csharp_build_path.mkdir(exist_ok=True)
+        self.rdkit_build_path.mkdir(exist_ok=True)
         _curdir = os.path.abspath(os.curdir)
-        os.chdir(self.rdkit_csharp_build_path)
+        os.chdir(self.rdkit_build_path)
         try:
             if get_os() == "win":
                 self.run_msbuild("RDKit.sln")
             else:
-                call_subprocess(["make", "-j", "RDKFuncs"])
+                cmd = ["make", "-j"]
+                if self.config.target_lang in (LangType.CPlusPlus,):
+                    pass
+                elif self.config.target_lang in (LangType.CSharp,):
+                    cmd += ["RDKFuncs"]
+                elif self.config.target_lang in (LangType.Java,):
+                    cmd += ["install"]
+                else:
+                    raise AssertionError
+                call_subprocess(cmd)
         finally:
             os.chdir(_curdir)
 
@@ -734,26 +790,17 @@ class NativeMaker:
         _svg_h = "<GraphMol/MolDraw2D/MolDraw2DSVG.h>"
         _cairo_h = "<GraphMol/MolDraw2D/MolDraw2DCairo.h>"
         _line = f"#include {_svg_h}"
-        _insert = f"""
-#ifdef RDK_BUILD_CAIRO_SUPPORT
-#include {_cairo_h}
-#endif
-"""
+        _insert = f"\n#ifdef RDK_BUILD_CAIRO_SUPPORT\n#include {_cairo_h}\n#endif\n"
         dic.update({_line: _insert})
         _line = f"%include {_svg_h}"
-        _insert = f"""
-#ifdef RDK_BUILD_CAIRO_SUPPORT
-%include {_cairo_h}
-#endif
-"""
+        _insert = f"\n#ifdef RDK_BUILD_CAIRO_SUPPORT\n%include {_cairo_h}\n#endif\n"
         dic.update({_line: _insert})
         _line = "%template(Int_Vect_Vect) std::vector<std::vector<int> >;"
-        _insert = """
-%template(UInt_Vect_Vect) std::vector<std::vector<unsigned int> >;
-%template(Double_Vect_Vect) std::vector<std::vector<double> >;
-%template(Point3D_Const_Vect) std::vector<const RDGeom::Point3D *>;
-%template(Point3D_Val_Vect) std::vector<RDGeom::Point3D>;
-"""
+        _insert = "\n"
+        _insert += "%template(UInt_Vect_Vect) std::vector<std::vector<unsigned int> >;\n"
+        _insert += "%template(Double_Vect_Vect) std::vector<std::vector<double> >;\n"
+        _insert += "%template(Point3D_Const_Vect) std::vector<const RDGeom::Point3D *>;\n"
+        _insert += "%template(Point3D_Val_Vect) std::vector<RDGeom::Point3D>;\n"
         insert_line_after(self.path_MolDraw2D_i, dic, make_backup=True)
 
     def _patch_MolDraw2D_h(self) -> None:
@@ -767,50 +814,53 @@ class NativeMaker:
 
     def _patch_MolDescriptors_h(self) -> None:
         dic: Dict[str, str] = dict()
+
         _line = r"SET(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_SOURCE_DIR}/swig_csharp )"
-        _insert = r"""
-if(RDK_BUILD_DESCRIPTORS3D)
-SET(CMAKE_SWIG_FLAGS "-DRDK_BUILD_DESCRIPTORS3D" "-DRDK_HAS_EIGEN3" ${CMAKE_SWIG_FLAGS} )
-endif()
-if(RDK_BUILD_CAIRO_SUPPORT)
-SET(CMAKE_SWIG_FLAGS "-DRDK_BUILD_CAIRO_SUPPORT" ${CMAKE_SWIG_FLAGS} )
-endif()
-"""
+        _inserts = [
+            "if(RDK_BUILD_DESCRIPTORS3D)"
+            "SET(CMAKE_SWIG_FLAGS \"-DRDK_BUILD_DESCRIPTORS3D\" \"-DRDK_HAS_EIGEN3\" ${CMAKE_SWIG_FLAGS} )",
+            "endif()",
+            "if(RDK_BUILD_CAIRO_SUPPORT)",
+            "SET(CMAKE_SWIG_FLAGS \"-DRDK_BUILD_CAIRO_SUPPORT\" ${CMAKE_SWIG_FLAGS} )",
+            "endif()",
+        ]
+        _insert = "\n" + "\n".join(_inserts) + "\n"
         dic.update({_line: _insert})
-        path = self.rdkit_path / "Code" / "JavaWrappers" / "csharp_wrapper" / "CMakeLists.txt"
-        insert_line_after(path, dic, make_backup=True)
+        insert_line_after(self._path_csharp_wrapper_CMakeLists_txt, dic, make_backup=True)
 
         _line = r"#include <GraphMol/Descriptors/MolDescriptors.h>"
-        _insert = """
-#include <GraphMol/Descriptors/AtomFeat.h>
-#include <GraphMol/Descriptors/USRDescriptor.h>
-#include <GraphMol/Depictor/RDDepictor.h>
-#ifdef RDK_BUILD_DESCRIPTORS3D
-#include <GraphMol/Descriptors/MolDescriptors3D.h>
-#endif
-"""
+        _inserts = [
+            "#include <GraphMol/Descriptors/AtomFeat.h>",
+            "#include <GraphMol/Descriptors/USRDescriptor.h>",
+            "#include <GraphMol/Depictor/RDDepictor.h>",
+            "#ifdef RDK_BUILD_DESCRIPTORS3D",
+            "#include <GraphMol/Descriptors/MolDescriptors3D.h>",
+            "#endif",
+        ]
+        _insert = "\n" + "\n".join(_inserts) + "\n"
         dic.update({_line: _insert})
         _line = r"%include <GraphMol/Descriptors/MQN.h>"
-        _insert = """
-%include <GraphMol/Descriptors/AUTOCORR2D.h>
-%include <GraphMol/Descriptors/AtomFeat.h>
-%include <GraphMol/Descriptors/USRDescriptor.h>
-%include <GraphMol/Depictor/RDDepictor.h>
-#ifdef RDK_HAS_EIGEN3
-%include <GraphMol/Descriptors/BCUT.h>
-#endif
-#ifdef RDK_BUILD_DESCRIPTORS3D
-%include <GraphMol/Descriptors/CoulombMat.h>
-%include <GraphMol/Descriptors/EEM.h>
-%include <GraphMol/Descriptors/PBF.h>
-%include <GraphMol/Descriptors/RDF.h>
-%include <GraphMol/Descriptors/MORSE.h>
-%include <GraphMol/Descriptors/WHIM.h>
-%include <GraphMol/Descriptors/GETAWAY.h>
-%include <GraphMol/Descriptors/AUTOCORR3D.h>
-%include <GraphMol/Descriptors/PMI.h>
-#endif
-"""
+        _inserts = [
+            "%include <GraphMol/Descriptors/AUTOCORR2D.h>",
+            "%include <GraphMol/Descriptors/AtomFeat.h>",
+            "%include <GraphMol/Descriptors/USRDescriptor.h>",
+            "%include <GraphMol/Depictor/RDDepictor.h>",
+            "#ifdef RDK_HAS_EIGEN3",
+            "%include <GraphMol/Descriptors/BCUT.h>",
+            "#endif",
+            "#ifdef RDK_BUILD_DESCRIPTORS3D",
+            "%include <GraphMol/Descriptors/CoulombMat.h>",
+            "%include <GraphMol/Descriptors/EEM.h>",
+            "%include <GraphMol/Descriptors/PBF.h>",
+            "%include <GraphMol/Descriptors/RDF.h>",
+            "%include <GraphMol/Descriptors/MORSE.h>",
+            "%include <GraphMol/Descriptors/WHIM.h>",
+            "%include <GraphMol/Descriptors/GETAWAY.h>",
+            "%include <GraphMol/Descriptors/AUTOCORR3D.h>",
+            "%include <GraphMol/Descriptors/PMI.h>",
+            "#endif",
+        ]
+        _insert = "\n" + "\n".join(_inserts) + "\n"
         dic.update({_line: _insert})
         insert_line_after(self.path_Descriptors_i, dic, make_backup=True)
         dic = dict()
@@ -844,18 +894,22 @@ endif()
         )
 
     def _patch_i_files(self):
-        self._patch_GraphMolCSharp_i()
+        if self.config.target_lang == LangType.CSharp:
+            if self.config.more_functions:
+                self._patch_GraphMolCSharp_i()
         self._patch_MolDraw2D_i()
         self._patch_MolDraw2D_h()
-        self._patch_MolDescriptors_h()
+        if self.config.more_functions:
+            self._patch_MolDescriptors_h()
         self._patch_MolSupplier_i()
         self._patch_Streams_i()
 
-    def _make_rdkit_cmake(self) -> None:
+    def _make_rdkit_cmake(self) -> Sequence[str]:
         cmd: List[str] = self._get_cmake_rdkit_cmd_line()
         if get_os() == "win":
             cmd = [a.replace("\\", "/") for a in cmd]
         call_subprocess(cmd)
+        return cmd
 
     def _get_cmake_rdkit_cmd_line(self) -> List[str]:
         def f_test() -> str:
@@ -870,12 +924,29 @@ endif()
         args = [f"{str(self.rdkit_path)}"]
         args += ["-Wdev"]
         args += self.g_option_of_cmake
-        args += [
-            "-DRDK_BUILD_SWIG_WRAPPERS=ON",
-            "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON",
-            "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF",
-            "-DRDK_BUILD_PYTHON_WRAPPERS=OFF",
-        ]
+        if self.config.target_lang == LangType.CPlusPlus:
+            args += [
+                "-DRDK_BUILD_SWIG_WRAPPERS=OFF",
+                "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=OFF",
+                "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF",
+                "-DRDK_BUILD_PYTHON_WRAPPERS=OFF",
+            ]
+        elif self.config.target_lang == LangType.CSharp:
+            args += [
+                "-DRDK_BUILD_SWIG_WRAPPERS=ON",
+                "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=ON",
+                "-DRDK_BUILD_SWIG_JAVA_WRAPPER=OFF",
+                "-DRDK_BUILD_PYTHON_WRAPPERS=OFF",
+            ]
+        elif self.config.target_lang == LangType.Java:
+            args += [
+                "-DRDK_BUILD_SWIG_WRAPPERS=ON",
+                "-DRDK_BUILD_SWIG_CSHARP_WRAPPER=OFF",
+                "-DRDK_BUILD_SWIG_JAVA_WRAPPER=ON",
+                "-DRDK_BUILD_PYTHON_WRAPPERS=OFF",
+            ]
+        else:
+            raise RuntimeError(f"Not supported. {self.config.target_lang}")
         if self.config.boost_path:
             args += [
                 f"-DBOOST_ROOT={str(self.boost_path)}",
@@ -976,33 +1047,36 @@ endif()
                 ]
         return ["cmake"] + args
 
-    def _copy_dlls(self) -> None:
-        assert self.build_platform
-        dll_dest_path = self.rdkit_csharp_wrapper_path / get_os() / self.build_platform
-        remove_if_exist(dll_dest_path)
-        os.makedirs(dll_dest_path)
-        logging.info(f"Copy DLLs to {dll_dest_path}.")
-
-        files_to_copy: List[Union[str, PathLike]] = []
+    def get_RDKFuncs_dll_path(self) -> Path:
         a: Path
-
-        a = self.rdkit_csharp_build_path / "Code" / "JavaWrappers" / "csharp_wrapper"
+        a = self.rdkit_build_path / "Code" / "JavaWrappers" / "csharp_wrapper"
         if get_os() == "win":
             a = a / "Release" / "RDKFuncs.dll"
         elif get_os() == "linux":
             a = a / "RDKFuncs.so"
         else:
             raise RuntimeError
-        rdfunc_dll_path: Path = a
-        files_to_copy.append(rdfunc_dll_path)
+        return a
+
+    def _copy_dlls(self) -> None:
+        assert self.build_platform
+        dll_dest_path = self.rdkit_wrapper_path / get_os() / self.build_platform
+        remove_if_exist(dll_dest_path)
+        os.makedirs(dll_dest_path)
+        logging.info(f"Copy DLLs to {dll_dest_path}.")
+
+        files_to_copy: List[Union[str, PathLike]] = []
+
+        if self.config.target_lang == LangType.CSharp:
+            files_to_copy.append(self.get_RDKFuncs_dll_path())
 
         # pick up dependent DLLs in buildlinux*CSharp/lib or buildwin*CSharp\bin\Release
         if get_os() == "win":
-            lib_path = self.rdkit_csharp_build_path / "bin" / "Release"
+            lib_path = self.rdkit_build_path / "bin" / "Release"
             for file_path in lib_path.glob("*.dll"):
                 files_to_copy.append(file_path)
         elif get_os() == "linux":
-            lib_path = self.rdkit_csharp_build_path / "lib"
+            lib_path = self.rdkit_build_path / "lib"
             for file_path in lib_path.glob("*.so.1"):
                 files_to_copy.append(file_path)
         else:
@@ -1052,11 +1126,22 @@ endif()
         for path in files_to_copy:
             shutil.copy2(path, dll_dest_path)
 
-    def build_csharp_wrapper(self) -> None:
-        self._patch_rdkit_swig_created_files()
-        self._prepare_RDKitDotNet_folder()
-        self._copy_test_projects()
-        self._build_RDKit2DotNet()
+    def build_wrapper(self) -> None:
+        if self.config.target_lang == LangType.CSharp:
+            self._patch_rdkit_swig_created_files()
+            self._prepare_RDKitDotNet_folder()
+            self._copy_test_projects()
+            self._build_RDKit2DotNet()
+        elif self.config.target_lang == LangType.Java:
+            _curdir = os.path.abspath(os.curdir)
+            os.chdir(self.rdkit_build_path)
+            try:
+                cmd = ["make", "-j", "GraphMolWrapJar"]
+                call_subprocess(cmd)
+            finally:
+                os.chdir(_curdir)
+        else:
+            pass
 
     def _patch_rdkit_swig_created_files(self) -> None:
         # Customize the followings if required.
@@ -1120,7 +1205,7 @@ endif()
         remove_if_exist(self.path_RDKit2DotNet_folder)
         shutil.copytree(
             self.this_path / "files" / "rdkit" / "RDKit2DotNet",
-            self.rdkit_csharp_wrapper_path / "RDKit2DotNet",
+            self.rdkit_wrapper_path / "RDKit2DotNet",
         )
         path_RDKit2DotNet_csproj = self.path_RDKit2DotNet_folder / "RDKit2DotNet.csproj"
         rdkit_dotnetwrap_version = self.get_version_for_rdkit_dotnetwrap()
@@ -1141,7 +1226,7 @@ endif()
         item_group = SubElement(project, "ItemGroup")
         for cpu_model in typing.get_args(CpuModel):
             for filename in glob.glob(
-                str(self.rdkit_csharp_wrapper_path / get_os() / cpu_model / "*.dll")
+                str(self.rdkit_wrapper_path / get_os() / cpu_model / "*.dll")
             ):
                 dllbasename = os.path.basename(filename)
                 content = SubElement(item_group, "None")
@@ -1172,13 +1257,13 @@ endif()
     def _copy_test_projects(self) -> None:
         path_rdkit_files = self.this_path / "files" / "rdkit"
         for name in self.test_csprojects:
-            remove_if_exist(self.rdkit_csharp_wrapper_path / name)
+            remove_if_exist(self.rdkit_wrapper_path / name)
             shutil.copytree(
                 path_rdkit_files / name,
-                self.rdkit_csharp_wrapper_path / name,
+                self.rdkit_wrapper_path / name,
                 dirs_exist_ok=True,
             )
-            proj_path = self.rdkit_csharp_wrapper_path / name / f"{name}.csproj"
+            proj_path = self.rdkit_wrapper_path / name / f"{name}.csproj"
             tree = load_msbuild_xml(proj_path)
             project = tree.getroot()
             for item_grp in get_elems(project, "ItemGroup"):
@@ -1190,8 +1275,8 @@ endif()
                         pkg_ref.attrib["Version"] = self.get_version_for_nuget()
             tree.write(proj_path, "utf-8", True)
         for name in self.test_sln_names:
-            shutil.copy2(path_rdkit_files / name, self.rdkit_csharp_wrapper_path)
-        print(f"Test slns {self.test_sln_names} are created in {self.rdkit_csharp_wrapper_path}.")
+            shutil.copy2(path_rdkit_files / name, self.rdkit_wrapper_path)
+        print(f"Test slns {self.test_sln_names} are created in {self.rdkit_wrapper_path}.")
         print("RDKit2DotNetTest: .NET 5.0 example.")
         print("RDKit2DotNetTest2: .NET Framework 4 example.")
         print("NuGetExample: NuGet package example for .NET 5.0.")
@@ -1220,7 +1305,7 @@ endif()
             if _os not in dll_basenames_dic:
                 dll_basenames_dic[_os] = dict()
             for cpu_model in typing.get_args(CpuModel):
-                dlls_path = self.rdkit_csharp_wrapper_path / _os / cpu_model
+                dlls_path = self.rdkit_wrapper_path / _os / cpu_model
                 dll_basenames: List[str] = []
                 for filename in glob.glob(str(dlls_path / "*.*")):
                     dll_basenames.append(os.path.basename(filename))
@@ -1271,7 +1356,7 @@ endif()
         self, dll_basenames_dic: Mapping[str, Mapping[str, Sequence[str]]]
     ) -> None:
         origin_file = self.this_path / "files" / "rdkit" / f"{project_name}.nuspec"
-        nuspec_file = shutil.copy2(origin_file, self.rdkit_csharp_wrapper_path / "RDKit2DotNet")
+        nuspec_file = shutil.copy2(origin_file, self.rdkit_wrapper_path / "RDKit2DotNet")
 
         tree: ElementTree = load_nuspec_xml(nuspec_file)
         root = tree.getroot()
@@ -1301,7 +1386,7 @@ endif()
         self, dll_basenames_dic: Mapping[str, Mapping[str, Sequence[str]]]
     ) -> None:
         origin_file = self.this_path / "files" / "rdkit" / f"{project_name}.targets"
-        targets_file = shutil.copy2(origin_file, self.rdkit_csharp_wrapper_path / "RDKit2DotNet")
+        targets_file = shutil.copy2(origin_file, self.rdkit_wrapper_path / "RDKit2DotNet")
 
         tree: ElementTree = load_msbuild_xml(targets_file)
         project = tree.getroot()
@@ -1344,7 +1429,7 @@ endif()
 
     def _build_nupkg(self) -> None:
         _curr_dir = os.curdir
-        os.chdir(self.rdkit_csharp_wrapper_path / "RDKit2DotNet")
+        os.chdir(self.rdkit_wrapper_path / "RDKit2DotNet")
         try:
             cmd = [
                 "dotnet",
@@ -1367,6 +1452,8 @@ endif()
         if self.config.rdkit_path:
             for path in self.bakable_files:
                 restore_from_bak(path)
+
+            # for C#
             for p in (
                 [
                     f"{project_name}.nuspec",
@@ -1379,11 +1466,36 @@ endif()
                 + list(self.test_csprojects)
                 + list(self.test_sln_names)
             ):
-                remove_if_exist(self.rdkit_csharp_wrapper_path / p)
+                remove_if_exist(self.rdkit_wrapper_path / p)
+
+            # for native libs
             remove_if_exist(self.rdkit_path / "lib")
+
+            # build dir
             for _os in typing.get_args(SupportedSystem):
                 for p in typing.get_args(CpuModel):
                     remove_if_exist(self.rdkit_path / f"build{_os}{p}CSharp")
+                    remove_if_exist(self.rdkit_path / f"build{_os}{p}java")
+                    remove_if_exist(self.rdkit_path / f"build{_os}{p}cpp")
+
+            # libs for copy dlls
+            for wrapper_name in ("gmwrapper", "csharp_wrapper"):
+                for _os in typing.get_args(SupportedSystem):
+                    dir = self.rdkit_path / "Code" / "JavaWrappers" / wrapper_name / _os
+                    remove_if_exist(dir)
+
+            # for java
+            dir = self.rdkit_path / "Code" / "JavaWrappers" / "gmwrapper" / "doc"
+            remove_if_exist(dir)
+            for name in ("build", "build-test"):
+                dir = self.rdkit_path / "Code" / "JavaWrappers" / "gmwrapper" / name
+                remove_if_exist(dir)
+            for name in ("src", "src-test"):
+                dir = self.rdkit_path / "Code" / "JavaWrappers" / "gmwrapper" / name / "org" / "RDKit"
+                remove_by_pattern(dir, "\\.gitignore", delete_on_match=False)
+            dir = self.rdkit_path / "Code" / "JavaWrappers" / "gmwrapper"
+            remove_by_pattern(dir, ".*\\.jar$", delete_on_match=True)
+
 
     def clean(self) -> None:
         self.clean_rdkit()
@@ -1419,6 +1531,9 @@ def main() -> None:
     parser.add_argument(
         "--build_platform", default="all", choices=list(typing.get_args(CpuModel)) + ["all"]
     )
+    parser.add_argument(
+        "--target_lang", default="csharp", choices=("csharp", "java", "cpp")
+    )
     for opt in (
         "build_zlib",
         "build_libpng",
@@ -1439,6 +1554,9 @@ def main() -> None:
         "clean_zlib",
         "clean_rdkit",
         "build_rdkit_only",
+        "show_cmake",
+        "enable_test",
+        "more_functions",
     ):
         parser.add_argument(f"--{opt}", default=False, action="store_true")
     args = parser.parse_args()
@@ -1451,6 +1569,16 @@ def main() -> None:
 
     default_config: Mapping[str, str] = config_file_to_map(Path("config.txt"))
     config = create_config(args, default_config)
+    if args.target_lang == "csharp":
+        config.target_lang = LangType.CSharp
+    if args.target_lang == "cpp":
+        config.target_lang = LangType.CPlusPlus
+    if args.target_lang == "java":
+        config.target_lang = LangType.Java
+
+    config.test_enabled = args.enable_test
+
+    config.more_functions = args.more_functions
 
     curr_dir = os.getcwd()
     try:
@@ -1476,6 +1604,9 @@ def main() -> None:
                 maker.make_pixman()
             if args.build_cairo:
                 maker.make_cairo()
+            if args.show_cmake:
+                cmd = maker.build_cmake_rdkit()
+                print(" ".join([(('"' + s + '"') if (" " in s or '"' in s) else s) for s in cmd]))
             if args.build_cmake:
                 maker.build_cmake_rdkit()
             if args.build_rdkit_only:
@@ -1488,7 +1619,7 @@ def main() -> None:
         # if required x64 is used as platform
         maker = NativeMaker(config)
         if args.build_wrapper:
-            maker.build_csharp_wrapper()
+            maker.build_wrapper()
         if args.build_nuget:
             maker.build_nuget_package()
     finally:
